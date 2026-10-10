@@ -71,6 +71,21 @@ The Receiver control exposes this as three tiers:
 
 Upgrading does three things, visible live: it **scans faster** (shorter revisit → more bursts caught → tighter fixes sooner), it **hears more of the band** (2.4 and 5.8 GHz come into coverage, so operators that were invisible become locatable), and it therefore **classifies sooner** (more bursts feed the fingerprint). The cost is SWaP — size, weight, power — and money: a multi-channel *coherent* wideband receiver is far more expensive and power-hungry than a Kraken, which matters on a small airframe. In testing, the upgrade lifted located targets by ~20% and unlocked the 2.4 GHz control links the Kraken cannot hear.
 
+## Receiver comparison (KrakenSDR / HackRF / USRP)
+
+The Receiver control carries four options; switch between them on the same map to compare. Prices are approximate and move — confirm before quoting.
+
+| Receiver | IBW | Band | AoA? | ~Price | Role |
+|---|---|---|---|---|---|
+| KrakenSDR | 2.4 MHz | ≤1.77 GHz | yes (5-ch coherent) | ~$500 | prototype DF |
+| HackRF One | 20 MHz | ≤6 GHz | **no** (single channel) | ~$150–320 | wideband scanner |
+| USRP B210 | 56 MHz | ≤6 GHz | yes (2-ch coherent) | ~$1.5–2k | wideband DF |
+| Wideband array | 56 MHz | ≤6 GHz | yes (4–5-ch coherent) | ~$10–25k | production DF |
+
+The decisive property is **coherence**, not bandwidth. Angle-of-arrival needs phase-synchronised channels. A single **HackRF** is wider and higher in frequency than the Kraken and scans much faster — in the sim it detects and classifies the *most* emitters — but it has one channel, so it produces **no bearings and locates nothing**. It is a survey / signal-ID tool, not a locator. (Coherent HackRF arrays can be built with external clock and trigger sharing, but that is a DIY project.) KrakenSDR is slower and capped at 1.77 GHz, but it is coherent, so it locates. Wideband coherent AoA (USRP-class, several synchronised channels) scans fast, reaches 6 GHz and locates — at roughly 10–50× the Kraken's price, plus the size, weight and power cost that matters on a drone.
+
+In the simulator, picking HackRF shows this directly: the funnel fills (tens of thousands of bursts detected and classified) but "located" stays at zero, every contact reads "no AoA", and the map shows no fixes. The coherent tiers locate; the wideband array locates the most because it also hears the 2.4 GHz operators the Kraken is blind to.
+
 ## Still not modelled
 
 Where field data would matter most, and what a real system still has to solve:

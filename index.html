@@ -145,6 +145,12 @@ details.model td:first-child { color: var(--ink-dim); }
 details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: var(--ink-dim); }
 
 .deint { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.rxtab { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.rxtab th { text-align: left; font: 600 10px var(--font-label); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); padding: 3px 6px; border-bottom: 1px solid var(--rule); }
+.rxtab td { padding: 5px 6px; border-bottom: 1px solid var(--rule); font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--ink-dim); }
+.rxtab td:first-child { color: var(--ink); white-space: nowrap; }
+.rxtab tr.on td { color: var(--teal); }
+.rxtab .no { color: var(--red); }
 .dstat { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; border: 1px solid var(--rule); border-radius: 5px; padding: 6px 9px; background: var(--panel-2); min-width: 0; }
 .dstat span { font: 600 10px var(--font-label); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-dim); }
 .dstat b { font: 500 15px var(--font-data); font-variant-numeric: tabular-nums; }
@@ -292,6 +298,10 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
       </div>
     </section>
     <section>
+      <h2>Receiver options <small>switch above to compare on this map</small></h2>
+      <table class="rxtab" id="rxCompare"></table>
+    </section>
+    <section>
       <h2>Pipeline gates</h2>
       <div class="ctl">
         <div class="row">
@@ -385,9 +395,10 @@ const STEP_S = 2;                   // simulation step
 const DWELL_S = 6;                  // radio push-to-talk duty cadence (modeling constant)
 // Receiver tiers: instantaneous bandwidth sets the sweep revisit; ceiling sets what the array can hear.
 const RX_TIERS = [
-  { name: 'KrakenSDR', sub: '5-ch coherent · 2.4 MHz IBW · ≤1.77 GHz', revisitS: 6, ceil: 1766 },
-  { name: 'Wideband mid', sub: 'coherent · ~20 MHz IBW · ≤3 GHz', revisitS: 2.5, ceil: 3000 },
-  { name: 'Wideband', sub: 'coherent · ~56 MHz IBW · ≤6 GHz', revisitS: 2, ceil: 6000 },
+  { name: 'KrakenSDR', sub: '5-ch coherent · 2.4 MHz IBW · ≤1.77 GHz · does AoA', revisitS: 6, ceil: 1766, coherent: true, ibw: '2.4 MHz', price: '~$500', role: 'prototype DF' },
+  { name: 'HackRF One', sub: 'single channel · 20 MHz IBW · ≤6 GHz · NO AoA, survey only', revisitS: 1.5, ceil: 6000, coherent: false, ibw: '20 MHz', price: '~$150–320', role: 'wideband scanner' },
+  { name: 'USRP B210', sub: '2-ch coherent · 56 MHz IBW · ≤6 GHz · limited AoA', revisitS: 1.5, ceil: 6000, coherent: true, ibw: '56 MHz', price: '~$1.5–2k', role: 'wideband DF' },
+  { name: 'Wideband array', sub: '4–5-ch coherent · 56 MHz IBW · ≤6 GHz · full AoA', revisitS: 1.2, ceil: 6000, coherent: true, ibw: '56 MHz', price: '~$10–25k', role: 'production DF' },
 ];
 const bandsFor = ceil => PIPE.bands.filter(b => b[0] < ceil).concat(ceil >= 2400 ? [[2400, 2500]] : []).concat(ceil >= 5700 ? [[5700, 5900]] : []);
 const MISSION_MAX_S = 3900;         // 65 min: out to the objective and back (RTB)
@@ -1035,7 +1046,7 @@ function isLocated(tr, snap, p) {
 /* ===================================================================== SIMULATION */
 function simulate(W, cfg, mode) {
   cfg = Object.assign({ alt: 1, beam: BEAM_WIDTH_DEG, noise: 0, refl: true, realism: false, attDeg: 0, density: 150, rx: 0, margin: PIPE.marginDb, persistWin: PIPE.persistWin, convTolM: PIPE.convTolM, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }, cfg);
-  const rxt = RX_TIERS[cfg.rx] || RX_TIERS[0], dwell = rxt.revisitS; cfg.bands = bandsFor(rxt.ceil);
+  const rxt = RX_TIERS[cfg.rx] || RX_TIERS[0], dwell = rxt.revisitS, coherent = rxt.coherent !== false; cfg.bands = bandsFor(rxt.ceil);
   const R = makeRng(W.seed + '|sim|' + mode), Rp = makeRng(W.seed + '|pop|' + mode);
   const alt = ALTITUDES[cfg.alt].m, altZ = W.meanH + alt, bw = cfg.beam;
   const ems = W.emitters;
@@ -1119,7 +1130,7 @@ function simulate(W, cfg, mode) {
     if (snr < cfg.margin || Rp() >= pd) return; F.s3++;
     if (pe.hop && inW(pe.hopRate, cfg.hopRate) && inW(pe.bw, cfg.burstBW)) F.s4++;
     const sigR = Math.hypot(SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * clamp((SNR_STRONG_DB - snr) / (SNR_STRONG_DB - DETECT_SNR_DB), 0, 1), cfg.realism ? cfg.attDeg : 0, cfg.realism ? REAL_RESID_DEG : 0);
-    clusterIngest({ t, f: pe.hop ? pe.fMHz + Rp.range(-pe.hopSpan / 2, pe.hopSpan / 2) : pe.fMHz, bw: pe.bw, snr, az: (azTrue + Rp.norm() * sigR + 360) % 360, hop: pe.hop, hr: pe.hopRate + (pe.hop ? Rp.norm() * pe.hopRate * 0.08 : 0), x: nX, y: nY, sr: sigR * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, len: clamp(horiz + 2000, 3000, 26000), truth: 'pop:' + pe.idx });
+    if (coherent) clusterIngest({ t, f: pe.hop ? pe.fMHz + Rp.range(-pe.hopSpan / 2, pe.hopSpan / 2) : pe.fMHz, bw: pe.bw, snr, az: (azTrue + Rp.norm() * sigR + 360) % 360, hop: pe.hop, hr: pe.hopRate + (pe.hop ? Rp.norm() * pe.hopRate * 0.08 : 0), x: nX, y: nY, sr: sigR * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, len: clamp(horiz + 2000, 3000, 26000), truth: 'pop:' + pe.idx });
   };
   const clusterLoc = c => c.pstage === 5 && c.windows >= cfg.persistWin && c.fix && c.fix.valid && !c.fix.moving && c.fix.a <= cfg.convTolM;
 
@@ -1183,7 +1194,7 @@ function simulate(W, cfg, mode) {
     if (fpPass) { F.s4++; const w = Math.floor(t / cfg.winS); if (w !== tr.lastWin) { tr.lastWin = w; tr.windows++; } }
     else tr.nRej4++;
     // deinterleave error: a burst occasionally filed under the wrong nearby target, an outlier for its track
-    if (cfg.realism && fpPass && R() < ASSOC_P) {
+    if (coherent && cfg.realism && fpPass && R() < ASSOC_P) {
       const cand = tracks.filter(o => o !== tr && o.pstage === 5 && t - o.lastT < 90 && Math.hypot(o.e.x - e.x, o.e.y - e.y) < ASSOC_RANGE_M);
       if (cand.length) {
         const o = cand[Math.floor(R() * cand.length)], sg = Math.hypot(SIGMA_WEAK_DEG, cfg.attDeg);
@@ -1195,6 +1206,12 @@ function simulate(W, cfg, mode) {
     // --- caught a burst: measure a bearing
     tr.nDet++; tr.lastT = t; tr.maxSnr = Math.max(tr.maxSnr, snr);
     if (lobe) tr.lobes[lobe === 'main' ? 0 : lobe === 'side' ? 1 : 2]++;
+    if (!coherent) {   // single-channel receiver: detect and classify, but no bearing -> no fix
+      classifyBurst(R, tr, snr);
+      if (tr.snaps.length === 0 || tr.nDet % 4 === 0) tr.snaps.push({ t, n: 0, fix: null, post: tr.post.slice(), nDet: tr.nDet, nMiss: tr.nMiss, lobes: tr.lobes.slice(), windows: 0, rej4: 0 });
+      if (tr.firstT < 0) { tr.firstT = t; say(t, `Detected ${e.id}: ${e.sig}. Classified, but a single-channel receiver gives no bearing.`); }
+      return;
+    }
     const q = clamp((SNR_STRONG_DB - snr) / (SNR_STRONG_DB - DETECT_SNR_DB), 0, 1);
     const steep = elev > STEEP_ELEV_DEG ? (elev - STEEP_ELEV_DEG) / (90 - STEEP_ELEV_DEG) : 0;
     const sigReported = Math.hypot((SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * q) * (1 + (STEEP_SIGMA_MAX_MULT - 1) * steep), cfg.realism ? cfg.attDeg : 0, cfg.realism ? REAL_RESID_DEG : 0);
@@ -1340,7 +1357,10 @@ function simulate(W, cfg, mode) {
   // --- summary
   const isLoc = tr => isLocated(tr, tr.snaps[tr.snaps.length - 1], cfg);
   const ids = arr => arr.map(tr => tr.e.id).join(', ');
-  if (mode === 0) {
+  if (!coherent) {
+    const heard = tracks.filter(tr => tr.nDet && tr.e.type !== 'video');
+    say(tEnd, `Mission end. ${heard.length} emitters detected and classified from ${F.raw.toLocaleString('en-US')} bursts — but a single-channel receiver has no angle-of-arrival, so nothing was located. Survey only.`, 'warn');
+  } else if (mode === 0) {
     const loc = tracks.filter(tr => tr.pstage === 5 && isLoc(tr));
     const rej = tracks.filter(tr => tr.nDet && tr.pstage === 4 && tr.e.type !== 'video');
     const oob = tracks.filter(tr => tr.pstage === 1 && tr.e.type !== 'video');
@@ -1353,7 +1373,7 @@ function simulate(W, cfg, mode) {
     if (phase === 'arc' && target) rep.push(`${target.e.id} ±${fmtM(target.fix ? target.fix.a : NaN)} (mid-arc)`);
     say(tEnd, rep.length ? `Mission end. Pinpointed ${rep.join(', ')}. Everything else is from transit only.` : 'Mission end. No contact passed all five gates as a stationary control link, so no orbit was flown.', rep.length ? 'good' : 'warn');
   }
-  return { mode, tracks, path, misses, events, tEnd, alt, altZ, oR, wp, deint, pipe: { series, params: { persistWin: cfg.persistWin, convTolM: cfg.convTolM, margin: cfg.margin, winS: cfg.winS, revisitS: dwell, ceil: rxt.ceil, bands: cfg.bands, selfNoise: cfg.selfNoise, hopRate: cfg.hopRate, burstMs: cfg.burstMs, burstBW: cfg.burstBW } } };
+  return { mode, tracks, path, misses, events, tEnd, alt, altZ, oR, wp, deint, coherent, pipe: { series, params: { persistWin: cfg.persistWin, convTolM: cfg.convTolM, margin: cfg.margin, winS: cfg.winS, revisitS: dwell, ceil: rxt.ceil, bands: cfg.bands, selfNoise: cfg.selfNoise, hopRate: cfg.hopRate, burstMs: cfg.burstMs, burstBW: cfg.burstBW } } };
 }
 
 /* ===================================================================== BASE MAP */
@@ -1787,8 +1807,10 @@ function updatePanel() {
   if (!best && usable.length) best = usable.slice().sort((a, b) => (a.pv.cls === 'ctrl' ? 0 : 1) - (b.pv.cls === 'ctrl' ? 0 : 1) || a.f.a - b.f.a)[0];
   const bf = $('bestfix');
   if (!best) {
-    bf.innerHTML = `<p class="empty">No located transmitter yet. A fix needs fingerprint-matching bursts from two or more positions, held across ${PP.persistWin} windows.</p>`;
-    $('bfNote').textContent = '';
+    bf.innerHTML = sim.coherent === false
+      ? `<p class="empty">This receiver has a single channel, so no angle-of-arrival. It detects and classifies emitters (see contacts) but cannot produce a bearing or a fix — survey only. A coherent receiver (KrakenSDR, USRP array) is needed to locate.</p>`
+      : `<p class="empty">No located transmitter yet. A fix needs fingerprint-matching bursts from two or more positions, held across ${PP.persistWin} windows.</p>`;
+    $('bfNote').textContent = sim.coherent === false ? 'survey only' : '';
   } else {
     const { tr, pv, f, err, snap } = best, cls = pv.cls, K = tr.iso ? ISO_K[tr.iso] : 1;
     $('bfNote').textContent = state.tab === 1 && sim.path.tg[p.i] === tr.i ? 'locked target' : 'tightest located';
@@ -1814,12 +1836,14 @@ function updatePanel() {
     const wrong = state.truth && pv.conf > 0.6 && pv.cls !== tr.e.type && tr.e.type !== 'video';
     const K = tr.iso ? ISO_K[tr.iso] : 1;
     let q, qc;
-    if (loc) { q = '±' + fmtM(f.a * K); qc = grade({ a: f.a * K, b: f.b * K, valid: true, nUsed: f.nUsed }); }
+    if (sim.coherent === false) { q = 'no AoA'; qc = 'poor'; }
+    else if (loc) { q = '±' + fmtM(f.a * K); qc = grade({ a: f.a * K, b: f.b * K, valid: true, nUsed: f.nUsed }); }
     else if (tr.iso === 'lost' && tr.pstage === 5) { q = 'lost'; qc = 'poor'; }
     else if (snap.fix && snap.fix.moving) { q = 'moving'; qc = 'poor'; }
     else if (tr.pstage === 5) { q = 'candidate'; qc = 'rough'; }
     else { q = 'rejected'; qc = 'poor'; }
-    const why = loc ? (tr.iso && tr.iso !== 'isolated' ? tr.iso + ' with clutter · S5' : null)
+    const why = sim.coherent === false ? 'classified, single-channel · no bearing'
+      : loc ? (tr.iso && tr.iso !== 'isolated' ? tr.iso + ' with clutter · S5' : null)
       : tr.iso === 'lost' && tr.pstage === 5 ? 'lost in clutter · S5'
       : tr.pstage === 2 ? 'self-noise · S2'
       : tr.pstage === 4 ? (tr.e.type === 'video' ? 'continuous carrier · S4' : tr.e.type === 'radio' ? 'not a hopper · S4' : 'wrong fingerprint · S4')
@@ -1846,7 +1870,8 @@ function updatePanel() {
       <div class="dstat"><span>Tracks formed</span><b>${D.clusters}</b></div>
       <div class="dstat"><span>Located emitters</span><b>${D.located}</b></div>
       <div class="dchips"><span class="dchip iso">${D.isolated} isolated</span>${D.merged ? `<span class="dchip mg">${D.merged} merged</span>` : ''}${D.split ? `<span class="dchip sp">${D.split} split</span>` : ''}${D.lost ? `<span class="dchip">${D.lost} lost</span>` : ''}<span class="dchip">of ${D.targets} targets</span></div>`;
-    $('deintCap').textContent = `${D.otherLinks} other control-link track${D.otherLinks === 1 ? '' : 's'} found (real emitters, not tasked)${D.falseTracks ? ` · ${D.falseTracks} false control-link track${D.falseTracks === 1 ? '' : 's'} from clutter` : ''}. Mission totals; the headline fixes above are the designated targets the deinterleaver could isolate.`;
+    if (sim.coherent === false) $('deintCap').textContent = `Single-channel receiver: ${D.raw.toLocaleString('en-US')} bursts detected and classified, but no angle-of-arrival, so 0 located. Switch to a coherent receiver to locate.`;
+    else $('deintCap').textContent = `${D.otherLinks} other control-link track${D.otherLinks === 1 ? '' : 's'} found (real emitters, not tasked)${D.falseTracks ? ` · ${D.falseTracks} false control-link track${D.falseTracks === 1 ? '' : 's'} from clutter` : ''}. Mission totals; the headline fixes above are the designated targets the deinterleaver could isolate.`;
   }
 
   // log
@@ -1891,6 +1916,7 @@ function syncControls() {
   document.querySelectorAll('#alt button').forEach((b, i) => b.setAttribute('aria-pressed', String(i === state.alt)));
   const rt = RX_TIERS[state.rx];
   $('rxVal').textContent = rt.revisitS + ' s revisit';
+  $('rxCompare').innerHTML = '<tr><th>Receiver</th><th>IBW</th><th>Band</th><th>AoA</th><th>~Price</th></tr>' + RX_TIERS.map((r, i) => `<tr class="${i === state.rx ? 'on' : ''}"><td>${r.name}</td><td>${r.ibw}</td><td>≤${r.ceil >= 6000 ? '6 GHz' : r.ceil >= 3000 ? '3 GHz' : '1.77 GHz'}</td><td class="${r.coherent ? 'yes' : 'no'}">${r.coherent ? 'yes' : 'no'}</td><td>${r.price}</td></tr>`).join('');
   $('rxNote').textContent = `${rt.sub}. Faster sweep catches more bursts and tightens fixes sooner; wider coverage hears 2.4/5.8 GHz but adds clutter.`;
   document.querySelectorAll('#rx button').forEach((b, i) => b.setAttribute('aria-pressed', String(i === state.rx)));
   document.querySelectorAll('#speed button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === state.speed)));
