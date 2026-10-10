@@ -32,3 +32,29 @@ Every event the receiver hears runs through five gates in order, and must pass a
 5. **Persistence + geometric convergence** — require contact across several windows and bearings that cross at one spot; this is the direction-finding step acting as the final filter.
 
 The gate parameters are notional placeholders at the top of the script. Stage 4's hop fingerprint is the one piece that can only be set from a real field recording, and is kept adjustable for that reason. The simulator proves the logic flows — the right signals survive and clutter dies — but it does not prove the fingerprint separates a real target from real-world clutter. That proof needs a field recording.
+
+## Frontline degradation (the "Frontline RF" toggle)
+
+A clean model is optimistic. The toggle adds the error a real sector introduces, so mentors can compare clean vs. degraded:
+
+- **Array / attitude error** — the array is body-mounted, so aircraft roll, pitch and yaw feed into every bearing. Modelled as a residual angular error, correctly treated as *correlated* across nearby bearings (a drifting calibration offset does not average down), which is what keeps the uncertainty ellipse honest.
+- **Multipath fading** — signal strength swings second to second as reflections add and cancel; weak emitters drop in and out.
+- **Near-far floor rise** — a busy band raises the effective noise floor and buries weak distant emitters.
+- **Airframe shadowing** — the aircraft's own body blocks signals arriving from behind the array.
+- **Burst mis-association (deinterleave error)** — a burst from one emitter is occasionally filed under a nearby concurrent one; the convergence gate has to catch it.
+
+Across 8 seeds × 3 altitudes × 2 tabs, the true position falls inside the 95% ellipse in 98% of located fixes with degradation on and 98% with it off. Degradation reduces how many emitters get located and pinpointed, and roughly 1% of located fixes can be confidently wrong (a tight ellipse on an ill-conditioned fix) — a real failure mode, left visible on purpose.
+
+## Still not modelled
+
+Where field data would matter most, and what a real system still has to solve:
+
+- Full deinterleaving at real spectral density (hundreds of overlapping emitters, not a handful).
+- A validated hop fingerprint — the Stage-4 values are placeholders until a field recording sets them.
+- 3D geolocation including emitter height.
+- An adversary that changes frequency, bursts briefly, or runs silent.
+- Fibre-optic FPV drones (no RF to intercept at all).
+- Real coherent-array calibration and mutual coupling between elements.
+- Weather and atmospheric ducting.
+- Downlink bandwidth, aircraft endurance, and survivability under fire.
+- The absence of ground truth in the field — here "error vs truth" is known only because the simulator placed the emitters.

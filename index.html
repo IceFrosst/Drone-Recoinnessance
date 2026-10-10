@@ -257,6 +257,12 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
           <label><input type="checkbox" id="refl"> Terrain reflections</label>
           <label><input type="checkbox" id="truth"> Ground truth</label>
           <label><input type="checkbox" id="clutter"> Airborne clutter</label>
+          <label><input type="checkbox" id="realism"> Frontline RF</label>
+        </div>
+        <div class="row">
+          <label for="att">Array / attitude error <output id="attVal" for="att"></output></label>
+          <input id="att" type="range" min="0" max="8" step="0.5">
+          <span class="note" id="realNote"></span>
         </div>
       </div>
     </section>
@@ -316,7 +322,8 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
         <p>Contacts are classified by signal fingerprint: band, hopping, cadence and bandwidth. Confidence builds burst by burst and grows faster on strong signals. A contact whose bearings never converge is treated as moving.</p>
         <p><strong>Five-stage classification pipeline.</strong> Every event the receiver hears runs through five gates in order: band, self-noise blanking, noise-floor margin, hop fingerprint, then persistence and geometric convergence. A signal must pass all five to be shown as a located transmitter. The cheap gates run first and discard the most, so the expensive direction-finding only runs on a shrinking candidate set. The simulator proves the logic flows — the right signals survive and clutter dies — but it does not prove the fingerprint separates a real target from real-world clutter. That proof needs a field recording, and the fingerprint values are placeholders until then.</p>
         <table id="constTable"></table>
-        <p>Not modelled: fibre-optic FPV drones (no RF to intercept), relay stations, operators changing power or channel, multiple receivers, real protocol libraries, and enemy fire against our drone.</p>
+        <p><strong>Frontline degradation (the "Frontline RF" toggle).</strong> A real sector adds error a clean model omits. Modelled here: array and aircraft-attitude bearing error (folded into the reported ellipse, so it stays honest); multipath fading that makes signal strength swing second to second; a near-far floor rise when the band is busy, which buries weak emitters; shadowing from our own airframe; and burst mis-association, where a burst is filed under the wrong nearby target and the convergence gate has to catch it. Turn it off to compare against the clean illustration.</p>
+        <p><strong>Still not modelled</strong>, and where field data would matter most: full deinterleaving at real spectral density (hundreds of overlapping emitters, not a handful); a validated hop fingerprint (the Stage-4 values are placeholders); 3D geolocation including emitter height; an adversary that changes frequency, bursts briefly, or runs silent; fibre-optic FPV drones (no RF at all); real coherent-array calibration and mutual coupling; weather and ducting; downlink bandwidth, endurance and survivability of the aircraft; and the absence of ground truth in the field (here the error-vs-truth is known only because the simulator placed the emitters).</p>
         <p>The constants sit at the top of the script, so field-test figures can replace them.</p>
       </details>
     </section>
@@ -385,6 +392,19 @@ const REFLECT_RANGE_M = 9000;       // reflecting hill must be this close to the
 const JAM_DESENS_DB = 10;           // our receiver's noise rise inside a jammed zone
 const NAV_DRIFT_MS = 0.6;           // GNSS-denied navigation drift, m/s
 const NAV_GNSS_SIG_M = 5;           // own-position error with GNSS
+
+// Frontline degradation (the "Realistic RF" toggle). Effects a real sector adds that a
+// clean illustration omits. Attitude error is folded into the reported bearing sigma so the
+// ellipse stays honest; fading and near-far lower SNR (also honest); mis-association injects
+// outliers for the convergence gate to catch.
+const ATT_ERR_DEG = 2.5;            // residual array + aircraft-attitude bearing error, deg RMS
+const FADE_DEPTH_DB = 7;            // multipath fast-fading swing, dB peak-to-peak
+const CONGEST_DB = 5;               // near-far: noise floor rise when the band is busy, dB
+const AIRFRAME_MASK_DB = 5;         // loss looking through our own airframe, worst aspect
+const AIRFRAME_SECTOR_DEG = 70;     // relative-aspect width of the airframe-shadowed zone (toward the tail)
+const ASSOC_P = 0.025;              // chance a burst is filed under the wrong nearby target (deinterleave error)
+const ASSOC_RANGE_M = 4000;         // only confuse targets within this range (nearby emitters, small angular bias)
+const REAL_RESID_DEG = 1.5;         // irreducible multipath bearing error even on strong bursts, deg
 
 // Classification (signal fingerprint: band, hopping, cadence, bandwidth)
 const CLASS_PRIOR = { ctrl: 0.30, radio: 0.35, jam: 0.10, video: 0.25 };
@@ -878,19 +898,20 @@ function solveFix(bs, n, rMin = 300, prev = null, fullSearch = true) {
     if (rej.length) X = gn(X, 8);
   }
   // statistics and covariance
-  let chi = 0, nu = 0, behind = 0, ws = 0, wn = 0;
+  let chi = 0, nu = 0, behind = 0, ws = 0, wn = 0, wc = 0;
   for (let i = 0; i < n; i++) {
     if (!use[i]) continue;
     const zi = zAt(X, i), b = bs[i], d = dirOf(b.az), r = Math.max(Math.hypot(X[0] - b.x, X[1] - b.y), rMin), w = 1 / xr(b, r) ** 2;
-    chi += zi * zi; nu++; ws += w; wn += w * b.ns * b.ns;
+    chi += zi * zi; nu++; ws += w; wn += w * b.ns * b.ns; wc += w * (b.cs ? b.cs * r : 0) ** 2;
     if ((X[0] - b.x) * d[0] + (X[1] - b.y) * d[1] < 0) behind++;
   }
   const N = normal(X);
   if (!(N.det > 0)) return { valid: false, nUsed: nu, rej };
   // inflate when bearings disagree more than modelled; add our own position error,
   // which is common to every bearing and does not average out
-  const s2 = nu > 2 ? chi / (nu - 2) : 1, k = Math.max(1, s2), NS = ws ? wn / ws : 0;
-  const c11 = N.a22 / N.det * k + NS, c12 = -N.a12 / N.det * k, c22 = N.a11 / N.det * k + NS;
+  const s2 = nu > 2 ? chi / (nu - 2) : 1, k = Math.max(1, s2), NS = ws ? wn / ws : 0, CS = ws ? wc / ws : 0;
+  // attitude/calibration bias is common to nearby bearings and does not average down: add it as a floor
+  const c11 = N.a22 / N.det * k + NS + CS, c12 = -N.a12 / N.det * k, c22 = N.a11 / N.det * k + NS + CS;
   const tr = (c11 + c22) / 2, dd = Math.sqrt(((c11 - c22) / 2) ** 2 + c12 * c12);
   const a = ELLIPSE_K * Math.sqrt(tr + dd), b = ELLIPSE_K * Math.sqrt(Math.max(tr - dd, 0));
   return { x: X[0], y: X[1], a, b, ang: 0.5 * Math.atan2(2 * c12, c11 - c22), nUsed: nu, rej, s2, moving: nu >= 8 && s2 > MOVING_CHI2,
@@ -931,7 +952,7 @@ function isLocated(tr, snap, p) {
 
 /* ===================================================================== SIMULATION */
 function simulate(W, cfg, mode) {
-  cfg = Object.assign({ alt: 1, beam: BEAM_WIDTH_DEG, noise: 0, refl: true, margin: PIPE.marginDb, persistWin: PIPE.persistWin, convTolM: PIPE.convTolM, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }, cfg);
+  cfg = Object.assign({ alt: 1, beam: BEAM_WIDTH_DEG, noise: 0, refl: true, realism: false, attDeg: 0, margin: PIPE.marginDb, persistWin: PIPE.persistWin, convTolM: PIPE.convTolM, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }, cfg);
   const R = makeRng(W.seed + '|sim|' + mode);
   const alt = ALTITUDES[cfg.alt].m, altZ = W.meanH + alt, bw = cfg.beam;
   const ems = W.emitters;
@@ -962,7 +983,7 @@ function simulate(W, cfg, mode) {
     if (!tr.class90 && pv.conf >= LOCK_CONF && tr.nDet >= 3) { tr.class90 = true; say(t, `${tr.e.id} classified: ${TYPE_NAME[pv.cls].toLowerCase()} (${pct(pv.conf)}).`, pv.cls === 'ctrl' ? 'good' : 'info'); }
   };
 
-  const intercept = (tr, t, nX, nY, desens) => {
+  const intercept = (tr, t, nX, nY, desens, congest) => {
     const e = tr.e;
     const tx = txAt(W, e, t);
     if (e.type === 'ctrl') {
@@ -986,10 +1007,18 @@ function simulate(W, cfg, mode) {
       gV = Math.max(VERT_FLOOR_DB, -12 * ((elev - 5) / VERT_BEAM_DEG) ** 2);
     }
     const masked = !lineOfSight(W, ep.x, ep.y, ep.z, px, py, altZ);
-    const snr0 = SNR_1KM_DB[e.type] - 10 * PATHLOSS_EXP * Math.log10(Math.max(slant, 100) / 1000) + gH + gV - cfg.noise - (e.type === 'jam' ? 0 : desens);
+    const azTrue0 = azOf(ep.x - px, ep.y - py);
+    let degrade = 0;
+    if (cfg.realism) {
+      const ph1 = (e.idx * 1.7) % 6.283, ph2 = (e.idx * 3.1 + 1) % 6.283;
+      degrade += FADE_DEPTH_DB * 0.25 * (Math.sin(t / 11 + ph1) + Math.sin(t / 27 + ph2));   // multipath fast fading (±)
+      if (e.type !== 'jam') degrade -= congest;                                               // near-far floor rise
+      degrade -= AIRFRAME_MASK_DB * smooth(180 - AIRFRAME_SECTOR_DEG, 180, Math.abs(angDiff(azTrue0, hdg)));  // our own airframe
+    }
+    const snr0 = SNR_1KM_DB[e.type] - 10 * PATHLOSS_EXP * Math.log10(Math.max(slant, 100) / 1000) + gH + gV - cfg.noise - (e.type === 'jam' ? 0 : desens) + degrade;
     const snr = snr0 - (masked ? MASK_LOSS_DB : 0);
     const pd = 1 / (1 + Math.exp(-(snr - DETECT_SNR_DB) / DETECT_SLOPE_DB));
-    const azTrue = azOf(ep.x - px, ep.y - py);
+    const azTrue = azTrue0;
     if (R() >= pd || snr < cfg.margin) {           // Stage 3: below the detection margin above the floor
       if (pd >= MISS_MIN_P) { tr.nMiss++; misses.push({ t, x: px, y: py, az: azTrue, i: tr.i }); }
       const pd0 = 1 / (1 + Math.exp(-(snr0 - DETECT_SNR_DB) / DETECT_SLOPE_DB));
@@ -1002,12 +1031,22 @@ function simulate(W, cfg, mode) {
     const fpPass = tr.pstage === 5 || ((e.type === 'video' || e.pclass === 'otherhop') && R() < cfg.fpSlipP);
     if (fpPass) { F.s4++; const w = Math.floor(t / cfg.winS); if (w !== tr.lastWin) { tr.lastWin = w; tr.windows++; } }
     else tr.nRej4++;
+    // deinterleave error: a burst occasionally filed under the wrong nearby target, an outlier for its track
+    if (cfg.realism && fpPass && R() < ASSOC_P) {
+      const cand = tracks.filter(o => o !== tr && o.pstage === 5 && t - o.lastT < 90 && Math.hypot(o.e.x - e.x, o.e.y - e.y) < ASSOC_RANGE_M);
+      if (cand.length) {
+        const o = cand[Math.floor(R() * cand.length)], sg = Math.hypot(SIGMA_WEAK_DEG, cfg.attDeg);
+        o.b.push({ t, x: nX, y: nY, az: (azTrue + R.norm() * sg + 360) % 360, sr: sg * D2R, ns: navSig, cs: cfg.attDeg * D2R, kind: 'false', len: clamp(horiz + 2000, 3000, 26000), snr });
+        if (once(tr, 'assoc', t, 900)) say(t, `A burst from ${e.id} was mis-associated to ${o.e.id}; the convergence gate should reject it.`, 'warn');
+        tr.nMiss++; return;
+      }
+    }
     // --- caught a burst: measure a bearing
     tr.nDet++; tr.lastT = t; tr.maxSnr = Math.max(tr.maxSnr, snr);
     if (lobe) tr.lobes[lobe === 'main' ? 0 : lobe === 'side' ? 1 : 2]++;
     const q = clamp((SNR_STRONG_DB - snr) / (SNR_STRONG_DB - DETECT_SNR_DB), 0, 1);
     const steep = elev > STEEP_ELEV_DEG ? (elev - STEEP_ELEV_DEG) / (90 - STEEP_ELEV_DEG) : 0;
-    const sigReported = (SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * q) * (1 + (STEEP_SIGMA_MAX_MULT - 1) * steep);
+    const sigReported = Math.hypot((SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * q) * (1 + (STEEP_SIGMA_MAX_MULT - 1) * steep), cfg.realism ? cfg.attDeg : 0, cfg.realism ? REAL_RESID_DEG : 0);
     const sigma = sigReported + SIGMA_PER_KM_DEG * horiz / 1000;
     let kind = snr >= SNR_STRONG_DB - 3 ? 'strong' : 'weak', az = azTrue + R.norm() * sigma, len = horiz + 2000;
     if (steep > 0 && R() < STEEP_WILD_P_MAX * steep) { az = azTrue + R.range(-90, 90); kind = 'steep'; len = 6000; }
@@ -1019,7 +1058,7 @@ function simulate(W, cfg, mode) {
       });
       if (cands.length) { const h = R.pick(cands); az = azOf(h.x - px, h.y - py) + R.norm() * sigma; kind = 'false'; len = Math.hypot(h.x - px, h.y - py) + 2000; }
     }
-    tr.b.push({ t, x: nX, y: nY, az: (az + 360) % 360, sr: sigReported * D2R, ns: navSig, kind, len: clamp(len, 3000, 26000), snr });
+    tr.b.push({ t, x: nX, y: nY, az: (az + 360) % 360, sr: sigReported * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, kind, len: clamp(len, 3000, 26000), snr });
     classifyBurst(R, tr, snr);
     // narration
     if (tr.firstT < 0) { tr.firstT = t; say(t, `New contact ${e.id}: ${e.sig}. Bearing ${fmtAz(az)}.`); }
@@ -1048,6 +1087,9 @@ function simulate(W, cfg, mode) {
     // --- electronic warfare: GNSS denial and receiver desensitisation
     let jam = null, desens = 0;
     for (const J of W.jammers) { const d = Math.hypot(px - J.x, py - J.y); if (d < J.jamR) { const v = JAM_DESENS_DB * Math.sqrt(1 - (d / J.jamR) ** 2); if (v > desens) { desens = v; jam = J; } } }
+    // near-far congestion: a busy band raises the floor for weak signals
+    let congest = 0;
+    if (cfg.realism) { let strong = 0; for (const em of ems) { if ((em.type === 'jam' || em.type === 'ctrl') && txAt(W, em, t)) strong++; } congest = CONGEST_DB * clamp(strong / 4, 0, 1); }
     if (jam && !jamIn) { jamIn = jam; const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; say(t, `Entered ${jam.id}'s jammed zone. GNSS denied, navigation drifting, receiver desensitised.`, 'alert'); }
     else if (!jam && jamIn) { say(t, `Left ${jamIn.id}'s zone. GNSS back; position had drifted ${fmtM(Math.hypot(dx, dy))}.`); jamIn = null; dx = dy = 0; }
     if (jamIn) { dx += dvx * STEP_S; dy += dvy * STEP_S; navSig += NAV_DRIFT_MS * STEP_S; } else navSig = NAV_GNSS_SIG_M;
@@ -1059,7 +1101,7 @@ function simulate(W, cfg, mode) {
 
     // --- intercepts
     for (let i = 0; i < ems.length; i++) {
-      while (next[i] <= t) { next[i] += DWELL_S * R.range(0.85, 1.15); intercept(tracks[i], t, nX, nY, desens); }
+      while (next[i] <= t) { next[i] += DWELL_S * R.range(0.85, 1.15); intercept(tracks[i], t, nX, nY, desens, congest); }
     }
 
     // --- Pinpoint mode: lock, orbit, report
@@ -1225,7 +1267,7 @@ const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:
 
 const cvs = document.getElementById('map'), ctx = cvs.getContext('2d');
 const view = { cx: MAP_W / 2, cy: MAP_H / 2, s: 0.02, w: 800, h: 600, dpr: 1, fitted: false };
-const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM };
+const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM, realism: true, att: ATT_ERR_DEG };
 const hlIdx = () => state.hover >= 0 ? state.hover : state.pin;
 let world = null, sims = null;
 
@@ -1577,7 +1619,7 @@ function updatePanel() {
 }
 
 /* ===================================================================== UI WIRING */
-function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl, margin: state.margin, persistWin: state.persist, convTolM: state.convTol, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }; }
+function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl, margin: state.margin, persistWin: state.persist, convTolM: state.convTol, realism: state.realism, attDeg: state.att, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }; }
 function rebuildSims(keep) {
   const frac = keep && sims ? state.t.map((t, i) => t / sims[i].tEnd) : [0, 0];
   sims = [simulate(world, cfg(), 0), simulate(world, cfg(), 1)];
@@ -1603,6 +1645,9 @@ function syncControls() {
   $('beam').value = state.beam; $('beamVal').textContent = state.beam + '°';
   $('noise').value = state.noise; $('noiseVal').textContent = '+' + state.noise + ' dB';
   $('refl').checked = state.refl; $('truth').checked = state.truth; $('clutter').checked = state.clutter;
+  $('realism').checked = state.realism; $('att').value = state.att; $('att').disabled = !state.realism;
+  $('attVal').textContent = state.realism ? '±' + state.att + '°' : 'off';
+  $('realNote').textContent = state.realism ? 'On: multipath fading, our-airframe shadowing, near-far floor rise, and burst mis-association are modelled.' : 'Off: clean illustration — one clear path to each emitter.';
   const a = ALTITUDES[state.alt];
   $('altVal').textContent = a.m.toLocaleString('en-US') + ' m';
   $('altNote').textContent = `${a.note} Steep zone ${fmtM(a.m)}; orbit ${fmtM(Math.max(ORBIT_R_MIN_M, a.m * ORBIT_R_MULT))}.`;
@@ -1641,6 +1686,11 @@ $('constTable').innerHTML = [
   ['S4 target hop rate', `${PIPE.hopRate[0]}–${PIPE.hopRate[1]} hops/s (notional)`],
   ['S5 persistence', `${PIPE.persistWin} × ${PIPE.winS} s windows`],
   ['S5 convergence tolerance', `±${fmtM(PIPE.convTolM)}`],
+  ['Frontline: attitude error', `±${ATT_ERR_DEG}° RMS`],
+  ['Frontline: multipath fading', `${FADE_DEPTH_DB} dB swing`],
+  ['Frontline: near-far floor rise', `up to ${CONGEST_DB} dB`],
+  ['Frontline: airframe shadowing', `up to ${AIRFRAME_MASK_DB} dB`],
+  ['Frontline: mis-association', `${pct(ASSOC_P)} of bursts`],
 ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
 
 document.querySelectorAll('.tabs button').forEach((b, i) => b.addEventListener('click', () => { state.tab = i; state.hover = -1; state.pin = -1; if (state.t[i] >= sims[i].tEnd) state.t[i] = 0; setPlaying(!REDUCED || state.playing); syncControls(); updatePanel(); }));
@@ -1664,6 +1714,8 @@ onSlider('margin', 'margin', () => rebuildSims(true));
 onSlider('persist', 'persist', () => rebuildSims(true));
 onSlider('convTol', 'convTol', () => rebuildSims(true));
 $('refl').addEventListener('change', e => { state.refl = e.target.checked; rebuildSims(true); updatePanel(); });
+$('realism').addEventListener('change', e => { state.realism = e.target.checked; rebuildSims(true); syncControls(); updatePanel(); });
+onSlider('att', 'att', () => rebuildSims(true));
 $('truth').addEventListener('change', e => { state.truth = e.target.checked; updatePanel(); });
 $('clutter').addEventListener('change', e => { state.clutter = e.target.checked; updatePanel(); });
 $('play').addEventListener('click', () => { const sim = sims[state.tab]; if (!state.playing && state.t[state.tab] >= sim.tEnd) state.t[state.tab] = 0; setPlaying(!state.playing); });
