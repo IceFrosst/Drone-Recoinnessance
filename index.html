@@ -284,6 +284,7 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
         </div>
         <div class="toggles">
           <label><input type="checkbox" id="refl"> Terrain reflections</label>
+          <label><input type="checkbox" id="rangefx"> Range fusion (2-D array)</label>
           <label><input type="checkbox" id="truth"> Ground truth</label>
           <label><input type="checkbox" id="clutter"> Airborne clutter</label>
           <label><input type="checkbox" id="realism"> Frontline RF</label>
@@ -358,6 +359,7 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
         <summary>About the model</summary>
         <p>This is a physics-based illustration for briefing and discussion. Every number on screen is a modelled estimate. None of it is real RF data, and none of it is a claim of field performance.</p>
         <p>Bearings are combined by weighted least squares. Each bearing is weighted by its expected cross-range error, its angular error times its range, so strong bearings count more than faint ones. The 95% ellipse comes from the solution covariance, inflated when the bearings disagree more than the model expects. Bearings more than 3&sigma; from the fix are dropped one at a time, worst first, up to a quarter of them, so reflections and steep-zone bearings don't drag the fix away.</p>
+        <p><strong>Range fusion (triangulation + trilateration).</strong> With a two-dimensional array the drone also measures the <em>look-down</em> (depression) angle to each burst, and turns it into a horizontal range: range = altitude &divide; tan(depression). That range is fused into the solver as a weighted circle constraint alongside the bearing lines, so a fix is built from bearings <em>and</em> ranges &mdash; triangulation and trilateration at once from the single aircraft. Bearings pin the cross-range (side-to-side); ranges pin the down-range (near-far) that a lone bearing leaves open, so the two together tighten the ellipse where either alone is weak. The elevation measurement is coarser than azimuth and useless at shallow look-down angles, so it is skipped below 12&deg; of depression and its error grows toward the horizon; it helps most when the target is well below and ahead, and most of all nearly overhead, where the azimuth bearing scatters but the range stays sharp. Turn off <em>Range fusion</em> to see the bearings-only fix.</p>
         <p>Contacts are classified by signal fingerprint: band, hopping, cadence and bandwidth. Confidence builds burst by burst and grows faster on strong signals. A contact whose bearings never converge is treated as moving.</p>
         <p><strong>Dense spectrum and deinterleaving.</strong> The sector carries a configurable background population of friendly, civilian and other-unit emitters on top of the designated targets. Every emission becomes an anonymous burst, and an online clustering algorithm sorts the stream back into tracks by frequency, bandwidth, hop signature and bearing, with co-channel collisions and re-acquisition across silences. It scores itself against ground truth: each target is isolated, merged, split, or lost in the clutter, and the panel reports the tracks formed, the other control links found, and any false control-link tracks. Located fixes are the targets the deinterleaver could isolate; merged and split targets carry a widened, flagged ellipse.</p>
         <p><strong>Mission profile and tasking.</strong> The survey flies a straight line out and returns to base. Pinpoint flies in, scores every candidate by value (control links highest, then jammers, then radios, weighted by confidence and by how rough the current fix is), diverts to the highest-value one, flies a single 180° arc to cut the bearing from a wide spread of angles, reports, and moves to the next until bingo fuel sends it home. A broad GNSS-denial belt runs along and behind the enemy line: inside it the drone navigates by dead-reckoning and its own position drifts, which widens every fix taken there. Comms jamming stays local, as bubbles around EW nodes. Operators hop across their whole band, and under Frontline RF a share of them retune mid-mission, which breaks the deinterleaver's track so the emitter reappears as a new one. The Receiver control sets instantaneous bandwidth: a wider-band coherent receiver sweeps faster (shorter revisit, more bursts, tighter fixes), reaches higher in frequency (2.4/5.8 GHz), and classifies sooner, at a cost in size, weight and power.</p>
@@ -433,6 +435,13 @@ const SIGMA_PER_KM_DEG = 0.03;      // multipath growth with range
 const STEEP_ELEV_DEG = 45;          // look-down steeper than this (horizontal < altitude) = steep zone
 const STEEP_SIGMA_MAX_MULT = 6;     // error multiplier directly overhead
 const STEEP_WILD_P_MAX = 0.35;      // chance of a scattered bearing directly overhead
+
+// Depression-angle ranging (2-D array): range = altitude / tan(depression). Fused as a
+// weighted range constraint alongside the bearing lines, so a fix is triangulation + trilateration.
+const ELEV_SIG_DEG = 5;             // depression-angle measurement error (a 2-D array is coarser in elevation than azimuth)
+const RANGE_MIN_ELEV_DEG = 30;      // below this look-down angle the range is too stretched (and gate-biased) to trust
+const RANGE_SIG_FLOOR_M = 60;       // best-case range error even at a steep look-down
+const DZ_REF_SIG_M = 25;            // altitude + terrain-height reference error: a per-fix range bias that does NOT average down
 
 // Terrain and electronic warfare
 const MASK_LOSS_DB = 18;            // diffraction loss when a ridge blocks line of sight
@@ -921,7 +930,7 @@ function solveFix(bs, n, rMin = 300, prev = null, fullSearch = true) {
     const b = bs[i], dx = P[0] - b.x, dy = P[1] - b.y, r = Math.max(Math.hypot(dx, dy), rMin);
     return Math.abs(angDiff(b.az, azOf(dx, dy))) * D2R * r / xr(b, r);
   };
-  const cost = P => { let c = 0; for (let i = 0; i < n; i++) if (use[i]) { const z = zAt(P, i); c += z * z; } return c; };
+  const cost = P => { let c = 0; for (let i = 0; i < n; i++) if (use[i]) { const z = zAt(P, i); c += z * z; const b = bs[i]; if (b.rw) { const dr = Math.hypot(P[0] - b.x, P[1] - b.y) - b.rng; c += dr * dr * b.rw; } } return c; };
   const stride = Math.max(1, Math.floor(n / 90));
   const robust = P => { let c = 0; for (let i = 0; i < n; i += stride) { const z = zAt(P, i); c += z < OUTLIER_GATE ? z * z : G2; } return c; };
   let A = null;
@@ -933,6 +942,10 @@ function solveFix(bs, n, rMin = 300, prev = null, fullSearch = true) {
       const j1 = -dy / ra / r, j2 = dx / ra / r;                 // d(azimuth)/d(position), rad per m
       const sg = xr(b, r) / r, w = 1 / (sg * sg), e = angDiff(b.az, azOf(dx, dy)) * D2R;
       a11 += w * j1 * j1; a12 += w * j1 * j2; a22 += w * j2 * j2; g1 += w * j1 * e; g2 += w * j2 * e;
+      if (b.rw) {                                // depression-angle range: a constraint along the bearing line
+        const u1 = dx / ra, u2 = dy / ra, er = b.rng - ra, w2 = b.rw;
+        a11 += w2 * u1 * u1; a12 += w2 * u1 * u2; a22 += w2 * u2 * u2; g1 += w2 * u1 * er; g2 += w2 * u2 * er;
+      }
     }
     return { a11, a12, a22, g1, g2, det: a11 * a22 - a12 * a12 };
   };
@@ -991,20 +1004,24 @@ function solveFix(bs, n, rMin = 300, prev = null, fullSearch = true) {
     if (rej.length) X = gn(X, 8);
   }
   // statistics and covariance
-  let chi = 0, nu = 0, behind = 0, ws = 0, wn = 0, wc = 0;
+  let chi = 0, nu = 0, behind = 0, ws = 0, wn = 0, wc = 0, wrs = 0, wrc = 0;
   for (let i = 0; i < n; i++) {
     if (!use[i]) continue;
     const zi = zAt(X, i), b = bs[i], d = dirOf(b.az), r = Math.max(Math.hypot(X[0] - b.x, X[1] - b.y), rMin), w = 1 / xr(b, r) ** 2;
     chi += zi * zi; nu++; ws += w; wn += w * b.ns * b.ns; wc += w * (b.cs ? b.cs * r : 0) ** 2;
+    if (b.rw) { wrs += b.rw; wrc += b.rw * (b.rcs || 0) ** 2; }   // range info tightens N, but is kept out of k
     if ((X[0] - b.x) * d[0] + (X[1] - b.y) * d[1] < 0) behind++;
   }
   const N = normal(X);
   if (!(N.det > 0)) return { valid: false, nUsed: nu, rej };
   // inflate when bearings disagree more than modelled; add our own position error,
   // which is common to every bearing and does not average out
+  // k (bearing-disagreement inflation) comes from the bearings alone, so well-fit ranges can't mask scattered bearings
   const s2 = nu > 2 ? chi / (nu - 2) : 1, k = Math.max(1, s2), NS = ws ? wn / ws : 0, CS = ws ? wc / ws : 0;
-  // attitude/calibration bias is common to nearby bearings and does not average down: add it as a floor
-  const c11 = N.a22 / N.det * k + NS + CS, c12 = -N.a12 / N.det * k, c22 = N.a11 / N.det * k + NS + CS;
+  // attitude/calibration bias is common to nearby bearings and does not average down: add it as a floor.
+  // the depression-angle range carries its own correlated floor (altitude/terrain reference + pitch bias).
+  const RCS = wrs ? wrc / wrs : 0;
+  const c11 = N.a22 / N.det * k + NS + CS + RCS, c12 = -N.a12 / N.det * k, c22 = N.a11 / N.det * k + NS + CS + RCS;
   const tr = (c11 + c22) / 2, dd = Math.sqrt(((c11 - c22) / 2) ** 2 + c12 * c12);
   const a = ELLIPSE_K * Math.sqrt(tr + dd), b = ELLIPSE_K * Math.sqrt(Math.max(tr - dd, 0));
   return { x: X[0], y: X[1], a, b, ang: 0.5 * Math.atan2(2 * c12, c11 - c22), nUsed: nu, rej, s2, moving: nu >= 8 && s2 > MOVING_CHI2,
@@ -1045,7 +1062,7 @@ function isLocated(tr, snap, p) {
 
 /* ===================================================================== SIMULATION */
 function simulate(W, cfg, mode) {
-  cfg = Object.assign({ alt: 1, beam: BEAM_WIDTH_DEG, noise: 0, refl: true, realism: false, attDeg: 0, density: 150, rx: 0, margin: PIPE.marginDb, persistWin: PIPE.persistWin, convTolM: PIPE.convTolM, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }, cfg);
+  cfg = Object.assign({ alt: 1, beam: BEAM_WIDTH_DEG, noise: 0, refl: true, rangefx: true, realism: false, attDeg: 0, density: 150, rx: 0, margin: PIPE.marginDb, persistWin: PIPE.persistWin, convTolM: PIPE.convTolM, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }, cfg);
   const rxt = RX_TIERS[cfg.rx] || RX_TIERS[0], dwell = rxt.revisitS, coherent = rxt.coherent !== false; cfg.bands = bandsFor(rxt.ceil);
   const R = makeRng(W.seed + '|sim|' + mode), Rp = makeRng(W.seed + '|pop|' + mode);
   const alt = ALTITUDES[cfg.alt].m, altZ = W.meanH + alt, bw = cfg.beam;
@@ -1226,7 +1243,24 @@ function simulate(W, cfg, mode) {
       });
       if (cands.length) { const h = R.pick(cands); az = azOf(h.x - px, h.y - py) + R.norm() * sigma; kind = 'false'; len = Math.hypot(h.x - px, h.y - py) + 2000; }
     }
-    tr.b.push({ t, x: nX, y: nY, az: (az + 360) % 360, sr: sigReported * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, kind, len: clamp(len, 3000, 26000), snr });
+    // depression-angle range (2-D array): measure the look-down angle, turn it into a horizontal range.
+    // Skipped on reflections (geometry is off) and shallow looks (too stretched).
+    let rng = 0, rw = 0, rcs = 0;
+    if (cfg.rangefx && kind !== 'false' && elev > RANGE_MIN_ELEV_DEG) {
+      const ecorr = (cfg.realism ? cfg.attDeg * 0.7 : 0) * D2R;       // pitch/attitude bias: correlated across a pass
+      const eSig = Math.hypot(ELEV_SIG_DEG * (1 + 0.8 * q) * D2R, ecorr);
+      const eMeas = elev * D2R + R.norm() * eSig;
+      if (eMeas > RANGE_MIN_ELEV_DEG * D2R && eMeas < 1.5533) {   // keep away from the straight-down singularity
+        const s2 = Math.sin(eMeas) ** 2;
+        // 1/tan is convex, so averaging noisy angles biases range outward (Jensen); correct to first order
+        rng = (dz / Math.tan(eMeas)) / (1 + eSig * eSig / s2);
+        const rsig = Math.max(dz * eSig / s2, RANGE_SIG_FLOOR_M);
+        // correlated (non-averaging) range error: altitude/terrain reference plus the attitude bias
+        rcs = Math.hypot(DZ_REF_SIG_M / Math.tan(eMeas), dz * ecorr / s2);
+        if (rng > 0 && rng < 30000 && rsig < 8000) rw = 1 / (rsig * rsig);
+      }
+    }
+    tr.b.push({ t, x: nX, y: nY, az: (az + 360) % 360, sr: sigReported * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, kind, len: clamp(len, 3000, 26000), snr, rng, rw, rcs });
     classifyBurst(R, tr, snr);
     clusterIngest({ t, f: fcAt(e, t) + ((e.fp && e.fp.hop) ? Rp.range(-e.hopSpan / 2, e.hopSpan / 2) : 0), bw: e.fp ? e.fp.burstBW : (e.type === 'jam' ? 20 : e.type === 'video' ? 12 : e.type === 'radio' ? 0.025 : 1), snr, az: (az + 360) % 360, hop: !!(e.fp && e.fp.hop), hr: hrAt(e, t), x: nX, y: nY, sr: sigReported * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, len: clamp(len, 3000, 26000), truth: 'tgt:' + e.idx });
     // narration
@@ -1470,7 +1504,7 @@ const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:
 
 const cvs = document.getElementById('map'), ctx = cvs.getContext('2d');
 const view = { cx: MAP_W / 2, cy: MAP_H / 2, s: 0.02, w: 800, h: 600, dpr: 1, fitted: false };
-const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM, realism: true, att: ATT_ERR_DEG, density: 150, spectrum: true, priority: true, rx: 0 };
+const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, rangefx: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM, realism: true, att: ATT_ERR_DEG, density: 150, spectrum: true, priority: true, rx: 0 };
 const hlIdx = () => state.hover >= 0 ? state.hover : state.pin;
 let world = null, sims = null;
 
@@ -1880,7 +1914,7 @@ function updatePanel() {
 }
 
 /* ===================================================================== UI WIRING */
-function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl, rx: state.rx, margin: state.margin, persistWin: state.persist, convTolM: state.convTol, realism: state.realism, attDeg: state.att, density: state.density, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }; }
+function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl, rangefx: state.rangefx, rx: state.rx, margin: state.margin, persistWin: state.persist, convTolM: state.convTol, realism: state.realism, attDeg: state.att, density: state.density, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }; }
 function rebuildSims(keep) {
   const frac = keep && sims ? state.t.map((t, i) => t / sims[i].tEnd) : [0, 0];
   sims = [simulate(world, cfg(), 0), simulate(world, cfg(), 1)];
@@ -1905,7 +1939,7 @@ function syncControls() {
   $('nEmit').value = state.n; $('nEmitVal').textContent = state.n;
   $('beam').value = state.beam; $('beamVal').textContent = state.beam + '°';
   $('noise').value = state.noise; $('noiseVal').textContent = '+' + state.noise + ' dB';
-  $('refl').checked = state.refl; $('truth').checked = state.truth; $('clutter').checked = state.clutter;
+  $('refl').checked = state.refl; $('rangefx').checked = state.rangefx; $('truth').checked = state.truth; $('clutter').checked = state.clutter;
   $('density').value = state.density; $('densityVal').textContent = state.density + ' emitters';
   $('realism').checked = state.realism; $('spectrum').checked = state.spectrum; $('priority').checked = state.priority; $('att').value = state.att; $('att').disabled = !state.realism;
   $('attVal').textContent = state.realism ? '±' + state.att + '°' : 'off';
@@ -1937,6 +1971,7 @@ $('constTable').innerHTML = [
   ['Side lobe / back lobe', `${SIDELOBE_DB} / ${BACKLOBE_DB} dB`],
   ['Bearing error, strong to weak', `±${SIGMA_STRONG_DEG}° to ±${SIGMA_WEAK_DEG}°`],
   ['Extra error per km of range', `${SIGMA_PER_KM_DEG}°`],
+  ['Depression-angle (range) error', `±${ELEV_SIG_DEG}°, floor ${RANGE_SIG_FLOOR_M} m, min ${RANGE_MIN_ELEV_DEG}° look-down`],
   ['Detection threshold (50% catch)', `${DETECT_SNR_DB} dB SNR`],
   ['Control link SNR at 1 km, on boresight', `${SNR_1KM_DB.ctrl} dB`],
   ['Path-loss exponent', PATHLOSS_EXP],
@@ -1984,6 +2019,7 @@ onSlider('margin', 'margin', () => rebuildSims(true));
 onSlider('persist', 'persist', () => rebuildSims(true));
 onSlider('convTol', 'convTol', () => rebuildSims(true));
 $('refl').addEventListener('change', e => { state.refl = e.target.checked; rebuildSims(true); updatePanel(); });
+$('rangefx').addEventListener('change', e => { state.rangefx = e.target.checked; rebuildSims(true); updatePanel(); });
 $('realism').addEventListener('change', e => { state.realism = e.target.checked; rebuildSims(true); syncControls(); updatePanel(); });
 onSlider('att', 'att', () => rebuildSims(true));
 $('truth').addEventListener('change', e => { state.truth = e.target.checked; updatePanel(); });

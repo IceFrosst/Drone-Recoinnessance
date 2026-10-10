@@ -15,11 +15,23 @@ Every map is generated from a seed shown in the top bar. The same seed gives the
 
 All numbers are modelled estimates from a notional physics model, not real RF data and not a claim of field performance. The constants (beam width, side and back lobe levels, bearing error, detection threshold, path loss, jammer effects, lock rule) sit in one block at the top of the script so field-test figures can replace them.
 
-- Fix: maximum-likelihood bearing intersection (Gauss-Newton on angular residuals). Bearing weights account for signal strength, range, and our own GNSS drift. The worst bearing is dropped while any sits more than 3 sigma off, up to a quarter of them.
-- Uncertainty: 95% ellipse from the solution covariance, inflated when bearings disagree more than modelled. Across 8 test maps at 3 altitudes, the true position fell inside the 95% ellipse in about 93% of fixes.
+- Fix: maximum-likelihood intersection (Gauss-Newton). Bearings are crossed (triangulation), and where the look-down is steep the depression angle is turned into a horizontal range and fused in as a weighted circle constraint (trilateration) — see below. Bearing weights account for signal strength, range, and our own GNSS drift. The worst bearing is dropped while any sits more than 3 sigma off, up to a quarter of them.
+- Uncertainty: 95% ellipse from the solution covariance, inflated when bearings disagree more than modelled. Across 8 test maps at 3 altitudes × 2 tabs, the true position fell inside the 95% ellipse in 100% of located fixes with range fusion on (99% with it off).
 - Classification: per-burst fingerprint reads, more reliable at high signal-to-noise, combined into a running probability. A motion test (bearings that never converge) separates airborne emitters.
 
 Not modelled: fibre-optic FPV drones (no RF to intercept), relay stations, operators changing power or channel, multiple receivers, real protocol libraries, and enemy fire against the drone.
+
+## Range fusion — triangulation *and* trilateration (the "Range fusion" toggle)
+
+One drone can get a range, not just a bearing, if its array measures the **look-down (depression) angle** to a burst: `range = altitude ÷ tan(depression)`. That range is fused into the solver as a weighted circle constraint alongside the bearing lines, so a fix is built from bearings **and** ranges — triangulation and trilateration from the single aircraft. Bearings pin the cross-range (side-to-side); ranges pin the down-range (near-far) that one bearing leaves open.
+
+Three things keep it honest, each learned from calibration:
+
+- **It only fires at a steep look-down (≥30° depression).** At shallow angles the range is extremely sensitive to angle error, *and* the decision to use a measurement selects the up-scattered ones, biasing the range short. Below 30° it is simply not used — far targets get bearings only.
+- **The convex-function (Jensen) bias is corrected.** `1/tan` is convex, so averaging noisy angles pulls the range outward; a first-order correction removes it.
+- **The correlated error is a floor, not averaged.** Pitch/attitude bias and altitude/terrain-reference error are common across a pass and do not average down, so they are added as a covariance floor — the same discipline the bearings already use for attitude.
+
+Measured effect across 8 seeds × 3 altitudes × 2 tabs: on the targets where the look-down is steep enough to use it, median fix error improves ~22% (≈139 m → ≈109 m), it lets a couple more targets cross the "located" threshold, and the 95% ellipse stays honest at 100%. On shallow/distant targets it correctly does nothing. Turn the toggle off to see the bearings-only fix.
 
 ## Five-stage classification pipeline
 
@@ -91,7 +103,7 @@ In the simulator, picking HackRF shows this directly: the funnel fills (tens of 
 Where field data would matter most, and what a real system still has to solve:
 
 - A validated hop fingerprint — the Stage-4 values are placeholders until a field recording sets them.
-- 3D geolocation including emitter height.
+- Full 3D geolocation. Range fusion uses the height difference from a terrain model (DEM) to turn depression angle into range; it does not solve the emitter's height as a free unknown, and it assumes the DEM and the drone's own altitude are good (their error is carried as a floor, not removed).
 - An adversary that changes frequency, bursts briefly, or runs silent.
 - Fibre-optic FPV drones (no RF to intercept at all).
 - Real coherent-array calibration and mutual coupling between elements.
