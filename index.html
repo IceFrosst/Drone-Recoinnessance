@@ -1,0 +1,1602 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RF Recon Simulator</title>
+<meta name="description" content="Passive angle-of-arrival direction finding from a fixed-wing drone over a modelled front line. Physics-based illustration, not real RF data.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed tactical map on the left, instrument rail on the right; stacks map-over-rail on phones.
+   Single deliberate dark look (a night tactical display), so no light theme. */
+:root {
+  color-scheme: dark;
+  --ground: #08111e;
+  --panel: #0c1727;
+  --panel-2: #122138;
+  --rule: #1c2e46;
+  --ink: #dce6f1;
+  --ink-dim: #8a9db4;
+  --ink-faint: #5a6d84;
+  --teal: #36d1be;
+  --amber: #f3b443;
+  --red: #ff5f58;
+  --purple: #a78bff;
+  --slate: #9fb2c8;
+  --water: #2c5f86;
+  --road: #b9c7d8;
+  --font-label: "Barlow Semi Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 400 14px/1.45 var(--font-body); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 384px; grid-template-rows: auto minmax(0, 1fr); height: 100%; }
+
+/* ---------- top bar ---------- */
+.top { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--rule); }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand svg { flex: none; }
+.brand h1 { margin: 0; font: 700 19px/1.05 var(--font-label); letter-spacing: .07em; text-transform: uppercase; }
+.brand p { margin: 2px 0 0; font: 500 12.5px/1.2 var(--font-label); letter-spacing: .03em; color: var(--ink-dim); }
+.tabs { display: flex; gap: 3px; padding: 3px; background: var(--ground); border: 1px solid var(--rule); border-radius: 6px; }
+.tabs button { border: 0; background: transparent; color: var(--ink-dim); padding: 7px 14px; border-radius: 4px; cursor: pointer; font: 600 14px/1.1 var(--font-label); letter-spacing: .05em; text-transform: uppercase; min-height: 34px; }
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { background: var(--panel-2); color: var(--ink); box-shadow: inset 0 -2px 0 var(--teal); }
+.tabs .num { font-family: var(--font-data); font-weight: 500; color: var(--teal); margin-right: 6px; font-size: 12px; }
+.seedbox { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.seedbox label { font: 600 12px var(--font-label); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); }
+.seedbox input { width: 96px; background: var(--ground); border: 1px solid var(--rule); border-radius: 5px; padding: 6px 8px; font: 500 13px var(--font-data); letter-spacing: .08em; text-transform: uppercase; min-height: 34px; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--panel-2); border: 1px solid var(--rule); border-radius: 5px; padding: 6px 12px; min-height: 34px; cursor: pointer; font: 600 13px/1 var(--font-label); letter-spacing: .07em; text-transform: uppercase; color: var(--ink); }
+.btn:hover { border-color: #2c4766; background: #16294a; }
+.btn.primary { border-color: rgba(54, 209, 190, .5); color: var(--teal); }
+.btn[aria-pressed="true"] { border-color: var(--teal); color: var(--teal); background: rgba(54, 209, 190, .08); }
+
+/* ---------- map ---------- */
+.mapcol { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.mapwrap { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--ground); }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+#map.dragging { cursor: grabbing; }
+.brief { position: absolute; top: 12px; left: 12px; max-width: 360px; padding: 10px 12px; background: rgba(12, 23, 39, .88); border: 1px solid var(--rule); border-radius: 6px; pointer-events: none; }
+.brief h2 { margin: 0; font: 700 14px/1.1 var(--font-label); letter-spacing: .1em; text-transform: uppercase; color: var(--ink); }
+.brief p { margin: 5px 0 0; font-size: 13px; line-height: 1.4; color: var(--ink-dim); }
+.brief .status { margin-top: 7px; font: 500 12px/1.3 var(--font-data); color: var(--teal); letter-spacing: .02em; }
+.mapctl { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px; }
+.mapctl .btn { min-width: 40px; padding: 6px 10px; background: rgba(18, 33, 56, .92); }
+.stamp { position: absolute; right: 12px; bottom: 10px; font: 500 11px var(--font-data); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim); background: rgba(8, 17, 30, .75); padding: 4px 7px; border-radius: 4px; pointer-events: none; }
+
+.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--rule); }
+.play { min-width: 92px; }
+.clock { font: 500 14px var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.clock .dim { color: var(--ink-faint); }
+#scrub { flex: 1; min-width: 160px; accent-color: var(--teal); height: 28px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; }
+.seg button { border: 0; background: var(--panel-2); padding: 6px 10px; min-height: 32px; cursor: pointer; font: 500 12.5px var(--font-data); color: var(--ink-dim); }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { color: var(--ground); background: var(--teal); }
+.seg.wide button { font: 600 13px var(--font-label); letter-spacing: .05em; flex: 1; padding: 7px 8px; }
+.seg.wide { display: flex; }
+
+/* ---------- rail ---------- */
+.rail { overflow-y: auto; background: var(--panel); border-left: 1px solid var(--rule); padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+.rail h2 { margin: 0 0 8px; font: 700 12.5px/1 var(--font-label); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-dim); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.rail h2 small { font: 500 11px var(--font-data); letter-spacing: .02em; text-transform: none; color: var(--ink-faint); }
+
+.fixcard { background: var(--panel-2); border: 1px solid var(--rule); border-radius: 7px; padding: 12px; }
+.fixhead { display: flex; gap: 10px; align-items: center; }
+.chip { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 24px; padding: 0 6px; border-radius: 4px; font: 600 12.5px var(--font-data); color: var(--ground); flex: none; }
+.chip.ctrl { background: var(--amber); } .chip.jam { background: var(--purple); } .chip.radio { background: var(--slate); } .chip.video { background: var(--red); }
+.fixclass { font: 600 16px/1.15 var(--font-label); letter-spacing: .02em; }
+.fixsub { font-size: 12.5px; color: var(--ink-dim); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 12px 0 0; }
+.stats div { min-width: 0; }
+.stats dt { font: 600 11px var(--font-label); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); }
+.stats dd { margin: 2px 0 0; font: 500 18px/1.15 var(--font-data); font-variant-numeric: tabular-nums; }
+.stats dd span { font-size: 13px; color: var(--ink-dim); }
+.stats small { display: block; font: 400 11.5px var(--font-data); color: var(--ink-dim); }
+.empty { color: var(--ink-dim); font-size: 13px; margin: 0; }
+
+.log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.log li { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 8px; font-size: 13px; line-height: 1.38; }
+.log li:first-child { color: var(--ink); }
+.log li:not(:first-child) { color: var(--ink-dim); }
+.log time { font: 500 11.5px/1.6 var(--font-data); color: var(--ink-faint); white-space: nowrap; }
+.log li::marker { content: none; }
+.log .k-good time { color: var(--teal); } .log .k-warn time { color: var(--amber); } .log .k-alert time { color: var(--red); }
+
+.contacts { display: flex; flex-direction: column; gap: 5px; }
+.contact { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 9px; align-items: center; width: 100%; text-align: left; background: transparent; border: 1px solid var(--rule); border-radius: 5px; padding: 7px 9px; cursor: pointer; }
+.contact * { pointer-events: none; }
+.contact:hover, .contact.hl { border-color: #34557a; background: rgba(18, 33, 56, .7); }
+.contact .cls { font: 600 14px/1.15 var(--font-label); letter-spacing: .02em; min-width: 0; }
+.contact .cls em { font-style: normal; color: var(--ink-dim); font-weight: 500; }
+.contact .bad { color: var(--red); font: 600 11px var(--font-label); letter-spacing: .08em; text-transform: uppercase; margin-left: 4px; }
+.contact .q { font: 500 12.5px var(--font-data); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.contact .meta { grid-column: 2 / -1; font: 400 11.5px/1.35 var(--font-data); color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.q.tight { color: var(--teal); } .q.rough { color: var(--amber); } .q.poor { color: var(--ink-dim); }
+
+.ctl { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; flex-direction: column; gap: 5px; }
+.row > label, .row .lbl { display: flex; justify-content: space-between; gap: 8px; font: 600 12.5px var(--font-label); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim); }
+.row output, .row .val { font: 500 12.5px var(--font-data); color: var(--ink); text-transform: none; letter-spacing: 0; }
+.row input[type="range"] { width: 100%; accent-color: var(--teal); }
+.row .note { font-size: 12px; color: var(--ink-faint); line-height: 1.35; }
+.toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.toggles label { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink); cursor: pointer; min-height: 28px; }
+.toggles input { accent-color: var(--teal); width: 16px; height: 16px; }
+
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 12.5px; color: var(--ink-dim); }
+.legend div { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.legend svg { flex: none; }
+
+details.model summary { cursor: pointer; font: 700 12.5px var(--font-label); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-dim); }
+details.model p { font-size: 13px; color: var(--ink-dim); margin: 8px 0; max-width: 62ch; }
+details.model table { width: 100%; border-collapse: collapse; font-size: 12px; }
+details.model td { padding: 4px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+details.model td:last-child { text-align: right; font-family: var(--font-data); color: var(--ink); padding-left: 10px; white-space: nowrap; }
+details.model td:first-child { color: var(--ink-dim); }
+details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: var(--ink-dim); }
+
+@media (max-width: 960px) {
+  html, body { height: auto; }
+  .app { display: block; height: auto; }
+  .mapwrap { height: 60vh; height: 60svh; min-height: 380px; flex: none; }
+  .rail { border-left: 0; border-top: 1px solid var(--rule); overflow: visible; }
+  .seedbox { margin-left: 0; }
+}
+@media (max-width: 560px) {
+  .brief { right: 64px; max-width: none; padding: 8px 10px; }
+  .brief p { display: none; }
+  .tabs { width: 100%; }
+  .tabs button { flex: 1; padding: 7px 6px; font-size: 13px; }
+  .stamp { left: 12px; right: auto; bottom: 10px; }
+  .mapctl .btn { min-height: 32px; min-width: 38px; padding: 4px 8px; }
+  #scrub { order: 5; flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13" fill="none" stroke="#36d1be" stroke-width="1.5"/><path d="M15 15 L27 9" stroke="#36d1be" stroke-width="1.5"/><path d="M15 15 L25 25" stroke="#f3b443" stroke-width="1.5"/><circle cx="15" cy="15" r="2.5" fill="#36d1be"/></svg>
+      <div><h1>RF Recon Simulator</h1><p>Passive direction finding from a fixed-wing drone</p></div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Mission">
+      <button role="tab" id="tab0" aria-selected="true"><span class="num">1</span>Straight pass survey</button>
+      <button role="tab" id="tab1" aria-selected="false"><span class="num">2</span>Pinpoint on contact</button>
+    </nav>
+    <div class="seedbox">
+      <label for="seed">Seed</label>
+      <input id="seed" type="text" maxlength="10" spellcheck="false" autocomplete="off" aria-describedby="seedhelp">
+      <button class="btn primary" id="reroll" type="button">Re-roll map</button>
+      <span id="seedhelp" hidden>Type a seed and press Enter to load that map.</span>
+    </div>
+  </header>
+
+  <main class="mapcol">
+    <div class="mapwrap" id="mapwrap">
+      <canvas id="map" aria-label="Tactical map of the sector with emitters, bearing lines and position estimates"></canvas>
+      <div class="brief" id="brief"><h2 id="briefTitle"></h2><p id="briefText"></p><div class="status" id="briefStatus"></div></div>
+      <div class="mapctl">
+        <button class="btn" id="zin" type="button" aria-label="Zoom in">+</button>
+        <button class="btn" id="zout" type="button" aria-label="Zoom out">&minus;</button>
+        <button class="btn" id="fit" type="button">Fit</button>
+        <button class="btn" id="follow" type="button" aria-pressed="false">Follow</button>
+      </div>
+      <div class="stamp">Modelled estimates &middot; not real RF data</div>
+    </div>
+    <div class="transport">
+      <button class="btn play" id="play" type="button"></button>
+      <div class="clock"><span id="tnow">T+00:00</span><span class="dim"> / <span id="tend">00:00</span></span></div>
+      <input id="scrub" type="range" min="0" max="1000" step="1" value="0" aria-label="Mission timeline">
+      <div class="seg" id="speed" role="group" aria-label="Playback speed">
+        <button type="button" data-v="20">&times;20</button><button type="button" data-v="40">&times;40</button><button type="button" data-v="80">&times;80</button><button type="button" data-v="160">&times;160</button>
+      </div>
+    </div>
+  </main>
+
+  <aside class="rail">
+    <section>
+      <h2>Best fix <small id="bfNote"></small></h2>
+      <div class="fixcard" id="bestfix"></div>
+    </section>
+    <section>
+      <h2>Mission log</h2>
+      <ol class="log" id="log"></ol>
+    </section>
+    <section>
+      <h2>Contacts <small id="ccount"></small></h2>
+      <div class="contacts" id="contacts"></div>
+    </section>
+    <section>
+      <h2>Scenario</h2>
+      <div class="ctl">
+        <div class="row">
+          <span class="lbl">Drone altitude <span class="val" id="altVal"></span></span>
+          <div class="seg wide" id="alt" role="group" aria-label="Drone altitude"></div>
+          <span class="note" id="altNote"></span>
+        </div>
+        <div class="row">
+          <label for="nEmit">Ground emitters <output id="nEmitVal" for="nEmit"></output></label>
+          <input id="nEmit" type="range" min="2" max="10" step="1">
+        </div>
+        <div class="row">
+          <label for="beam">Controller beam width <output id="beamVal" for="beam"></output></label>
+          <input id="beam" type="range" min="15" max="90" step="5">
+        </div>
+        <div class="row">
+          <label for="noise">Extra noise floor <output id="noiseVal" for="noise"></output></label>
+          <input id="noise" type="range" min="0" max="15" step="1">
+        </div>
+        <div class="toggles">
+          <label><input type="checkbox" id="refl"> Terrain reflections</label>
+          <label><input type="checkbox" id="truth"> Ground truth</label>
+          <label><input type="checkbox" id="clutter"> Airborne clutter</label>
+        </div>
+      </div>
+    </section>
+    <section>
+      <h2>Legend</h2>
+      <div class="legend">
+        <div><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="#36d1be" stroke-width="2"/></svg>Strong bearing</div>
+        <div><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="#9fb2c8" stroke-width="1.5" opacity=".75"/></svg>Weak bearing</div>
+        <div><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="#ff5f58" stroke-width="2"/></svg>False (reflection)</div>
+        <div><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="#9fb2c8" stroke-width="1.5" stroke-dasharray="2 3"/></svg>Steep-zone bearing</div>
+        <div><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="#dce6f1" stroke-width="1" stroke-dasharray="5 4" opacity=".45"/></svg>Rejected outlier</div>
+        <div><svg width="26" height="12"><circle cx="13" cy="6" r="3.5" fill="none" stroke="#f3b443" stroke-width="1.4"/></svg>Missed burst</div>
+        <div><svg width="26" height="16"><ellipse cx="13" cy="8" rx="11" ry="6" fill="none" stroke="#f3b443" stroke-width="1.3" stroke-dasharray="3 2"/><path d="M10 5 L16 11 M16 5 L10 11" stroke="#fff" stroke-width="1.6"/></svg>Estimate, 95% ellipse</div>
+        <div><svg width="26" height="16"><path d="M4 8 L24 1 L24 15 Z" fill="#f3b443" opacity=".35"/><rect x="1" y="5" width="6" height="6" transform="rotate(45 4 8)" fill="#f3b443"/></svg>Drone control station</div>
+        <div><svg width="26" height="16"><circle cx="13" cy="8" r="7" fill="none" stroke="#a78bff" opacity=".6"/><rect x="10" y="5" width="6" height="6" transform="rotate(45 13 8)" fill="#a78bff"/></svg>Jammer, EW zone</div>
+        <div><svg width="26" height="16"><rect x="8" y="3" width="10" height="10" fill="none" stroke="#9fb2c8" stroke-width="1.6"/></svg>Radio (omni)</div>
+        <div><svg width="26" height="16"><path d="M13 2 L19 14 L13 11 L7 14 Z" fill="#ff5f58"/></svg>Enemy drone</div>
+        <div><svg width="26" height="16"><path d="M13 1 L14 6 L24 8 L24 9.5 L14 9 L13.6 13 L16 14.5 L10 14.5 L12.4 13 L12 9 L2 9.5 L2 8 L12 6 Z" fill="#36d1be"/></svg>Our drone</div>
+        <div><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="#36d1be" stroke-width="2"/></svg>FLOT (own line)</div>
+        <div><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="#ff5f58" stroke-width="2" stroke-dasharray="6 4"/></svg>FLET (enemy line)</div>
+        <div><svg width="26" height="14"><rect x="1" y="2" width="11" height="9" fill="none" stroke="#36d1be" stroke-width="1.2"/><path d="M1 2 L12 11 M12 2 L1 11" stroke="#36d1be" stroke-width="1.2"/><path d="M19.5 1 L25 6.5 L19.5 12 L14 6.5 Z" fill="none" stroke="#ff5f58" stroke-width="1.2"/></svg>Own / enemy units</div>
+        <div><svg width="26" height="14"><circle cx="13" cy="7" r="6" fill="rgba(54,209,190,.08)" stroke="#36d1be" stroke-dasharray="2 2"/></svg>Steep zone</div>
+      </div>
+    </section>
+    <section>
+      <details class="model" id="model">
+        <summary>About the model</summary>
+        <p>This is a physics-based illustration for briefing and discussion. Every number on screen is a modelled estimate. None of it is real RF data, and none of it is a claim of field performance.</p>
+        <p>Bearings are combined by weighted least squares. Each bearing is weighted by its expected cross-range error, its angular error times its range, so strong bearings count more than faint ones. The 95% ellipse comes from the solution covariance, inflated when the bearings disagree more than the model expects. Bearings more than 3&sigma; from the fix are dropped one at a time, worst first, up to a quarter of them, so reflections and steep-zone bearings don't drag the fix away.</p>
+        <p>Contacts are classified by signal fingerprint: band, hopping, cadence and bandwidth. Confidence builds burst by burst and grows faster on strong signals. A contact whose bearings never converge is treated as moving.</p>
+        <table id="constTable"></table>
+        <p>Not modelled: fibre-optic FPV drones (no RF to intercept), relay stations, operators changing power or channel, multiple receivers, real protocol libraries, and enemy fire against our drone.</p>
+        <p>The constants sit at the top of the script, so field-test figures can replace them.</p>
+      </details>
+    </section>
+  </aside>
+</div>
+<noscript><p style="padding:16px">This simulator needs JavaScript.</p></noscript>
+
+<script>
+'use strict';
+/* =====================================================================
+   MODEL CONSTANTS
+   Notional values chosen to illustrate the physics. They are not field
+   measurements. Replace them with figures from your own tests.
+   ===================================================================== */
+// Sector
+const MAP_W = 60000;                // m, west to east
+const MAP_H = 40000;                // m, north to south
+
+// Our drone
+const ALTITUDES = [
+  { m: 400,  label: 'Low',  note: 'Small tactical fixed-wing. Ridges mask distant emitters; small steep zone.' },
+  { m: 1200, label: 'Mid',  note: 'Typical recon fixed-wing. Clear line of sight, modest steep zone.' },
+  { m: 3000, label: 'High', note: 'High recon. Sees over terrain, but longer slant ranges and a wide steep zone.' },
+];
+const CRUISE_MS = 30;               // ground speed, m/s (~108 km/h)
+const TURN_RATE_DEG_S = 4;          // max turn rate
+const STEP_S = 2;                   // simulation step
+const DWELL_S = 6;                  // receiver revisit: one bearing attempt per emitter per dwell
+const MISSION_MAX_S = 2700;         // 45 min on station
+
+// Link budget: SNR on boresight at 1 km slant range, before pattern and terrain losses
+const SNR_1KM_DB = { ctrl: 46, jam: 82, radio: 40, video: 34 };
+const PATHLOSS_EXP = 2.6;           // ground-to-air propagation exponent
+const DETECT_SNR_DB = 6;            // SNR with 50% chance of catching a burst
+const DETECT_SLOPE_DB = 2;          // softness of the detection curve
+const MISS_MIN_P = 0.05;            // count a miss only when a catch was plausible
+const RADIO_DUTY = 0.35;            // share of dwells a push-to-talk radio is on air
+
+// Directional controller antennas (patch / yagi aimed at their own drone)
+const BEAM_WIDTH_DEG = 40;          // main-beam (3 dB) width; slider overrides
+const SIDELOBE_DB = -15;            // just outside the main beam
+const BACKLOBE_DB = -25;            // behind the antenna
+const VERT_BEAM_DEG = 50;           // vertical 3 dB beamwidth
+const VERT_FLOOR_DB = -12;          // worst vertical pattern loss
+const BEAM_DRAW_M = 15000;          // display length of the beam wedge
+
+// Enemy drones (their motion steers the controller beams)
+const FPV_SPEED_MS = 24;
+const ISR_SPEED_MS = 28;
+const FPV_AGL_M = 120;
+const ISR_AGL_M = 900;
+
+// Bearing error
+const SIGMA_STRONG_DEG = 2;         // ~±2° in the main beam
+const SIGMA_WEAK_DEG = 7;           // ~±7° at the detection threshold
+const SNR_STRONG_DB = 20;           // SNR where bearings reach SIGMA_STRONG_DEG
+const SIGMA_PER_KM_DEG = 0.03;      // multipath growth with range
+const STEEP_ELEV_DEG = 45;          // look-down steeper than this (horizontal < altitude) = steep zone
+const STEEP_SIGMA_MAX_MULT = 6;     // error multiplier directly overhead
+const STEEP_WILD_P_MAX = 0.35;      // chance of a scattered bearing directly overhead
+
+// Terrain and electronic warfare
+const MASK_LOSS_DB = 18;            // diffraction loss when a ridge blocks line of sight
+const REFLECT_P = 0.08;             // chance a detection locks onto a hill reflection
+const REFLECT_RANGE_M = 9000;       // reflecting hill must be this close to the emitter
+const JAM_DESENS_DB = 10;           // our receiver's noise rise inside a jammed zone
+const NAV_DRIFT_MS = 0.6;           // GNSS-denied navigation drift, m/s
+const NAV_GNSS_SIG_M = 5;           // own-position error with GNSS
+
+// Classification (signal fingerprint: band, hopping, cadence, bandwidth)
+const CLASS_PRIOR = { ctrl: 0.30, radio: 0.35, jam: 0.10, video: 0.25 };
+const CLASS_P_WEAK = 0.55;          // per-burst chance of reading the right class at threshold
+const CLASS_P_STRONG = 0.95;        // ... at strong SNR
+const LOCK_CONF = 0.90;             // Pinpoint locks only above this confidence
+const LOCK_MIN_BURSTS = 5;
+const LOCK_RECENT_S = 600;          // only lock onto contacts heard in the last 10 min
+const LOCK_FIX_MAX_M = 6000;        // need at least a rough fix (95% semi-major) to know where to orbit
+
+// Position fix
+const OUTLIER_GATE = 3;             // drop bearings more than 3 sigma from the fix
+const OUTLIER_MIN_N = 6;            // only gate once there are this many bearings
+const OUTLIER_MAX_FRAC = 0.25;      // never drop more than this share
+const ELLIPSE_K = Math.sqrt(5.991); // 95% ellipse (chi-square, 2 degrees of freedom)
+const MOVING_CHI2 = 8;              // bearing disagreement above this = emitter is moving
+const FIX_VALID_M = 15000;          // ellipse semi-major above this = no usable fix
+
+// Orbit (Pinpoint tab)
+const ORBIT_R_MULT = 1.8;           // orbit radius = altitude x this, keeps us out of the steep zone
+const ORBIT_R_MIN_M = 2500;
+const FIX_DONE_M = 120;             // report and move on when the 95% semi-major is below this
+const ORBIT_MAX_LAPS = 3;
+const SILENT_GIVEUP_S = 480;
+
+/* ===================================================================== */
+
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+// World coordinates: x east, y south (screen-like). Azimuth: degrees clockwise from north.
+const azOf = (dx, dy) => { const a = Math.atan2(dx, -dy) * R2D; return a < 0 ? a + 360 : a; };
+const angDiff = (a, b) => { let d = (a - b) % 360; if (d > 180) d -= 360; if (d < -180) d += 360; return d; };
+const dirOf = az => [Math.sin(az * D2R), -Math.cos(az * D2R)];
+const fmtT = s => { s = Math.max(0, Math.round(s)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+const fmtM = m => !isFinite(m) ? '–' : m >= 10000 ? (m / 1000).toFixed(0) + ' km' : m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m';
+const fmtAz = a => String(Math.round(((a % 360) + 360) % 360) % 360).padStart(3, '0') + '°';
+const pct = p => Math.round(p * 100) + '%';
+
+function hashStr(s) {
+  let h = 1779033703 ^ s.length;
+  for (let i = 0; i < s.length; i++) { h = Math.imul(h ^ s.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; }
+  h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909);
+  return (h ^= h >>> 16) >>> 0;
+}
+function makeRng(str) {
+  let a = hashStr(str);
+  const r = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  r.range = (lo, hi) => lo + (hi - lo) * r();
+  r.int = (lo, hi) => Math.floor(lo + (hi - lo + 1) * r());
+  r.norm = () => { let u = 0, v = 0; while (u === 0) u = r(); while (v === 0) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  r.pick = arr => arr[Math.floor(r() * arr.length)];
+  return r;
+}
+function hash01(n) { n |= 0; n = (n ^ 61) ^ (n >>> 16); n = Math.imul(n, 9); n ^= n >>> 4; n = Math.imul(n, 0x27d4eb2d); n ^= n >>> 15; return (n >>> 0) / 4294967296; }
+
+function makeNoise(R) {
+  const p = new Uint8Array(256); for (let i = 0; i < 256; i++) p[i] = i;
+  for (let i = 255; i > 0; i--) { const j = Math.floor(R() * (i + 1)); const t = p[i]; p[i] = p[j]; p[j] = t; }
+  const perm = new Uint16Array(512); for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+  const val = new Float32Array(256); for (let i = 0; i < 256; i++) val[i] = R();
+  const n2 = (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, X = xi & 255, Y = yi & 255;
+    const a = val[perm[perm[X] + Y]], b = val[perm[perm[X + 1] + Y]], c = val[perm[perm[X] + Y + 1]], d = val[perm[perm[X + 1] + Y + 1]];
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+  const fbm = (x, y, oct) => { let s = 0, amp = 1, f = 1, norm = 0; for (let o = 0; o < oct; o++) { s += amp * n2(x * f, y * f); norm += amp; amp *= 0.5; f *= 2.03; } return s / norm; };
+  return { n2, fbm };
+}
+
+/* ===================================================================== WORLD */
+const CELL = 50, GX = MAP_W / CELL, GY = MAP_H / CELL, FRONT_STEP = 250;
+const TOWN_NAMES = ['Alder', 'Brenmoor', 'Corvin', 'Dunholt', 'Eskvale', 'Fenwick', 'Garrow', 'Holmby', 'Ivershaw', 'Kestrel', 'Larchmont', 'Marrow', 'Northam', 'Oakhurst', 'Pellin', 'Redfern', 'Saltash', 'Tamsin', 'Ulverby', 'Wexley', 'Yarrow', 'Thornby'];
+const TYPE_NAME = { ctrl: 'Drone control link', radio: 'Tactical radio', jam: 'Jammer', video: 'UAV video link' };
+const CLASSES = ['ctrl', 'radio', 'jam', 'video'];
+// When a burst is misread, which class it gets mistaken for
+const CONFUSE = {
+  ctrl:  { radio: 0.6, video: 0.3, jam: 0.1 },
+  radio: { ctrl: 0.7, video: 0.2, jam: 0.1 },
+  jam:   { ctrl: 0.3, radio: 0.3, video: 0.4 },
+  video: { ctrl: 0.6, radio: 0.2, jam: 0.2 },
+};
+
+function genWorld(seed, nEmit) {
+  const R = makeRng(seed + '|world');
+  const nz = makeNoise(R);
+  const o = Array.from({ length: 10 }, () => R.range(0, 1000));
+  const W = { seed, nEmit, seedNum: hashStr(seed) };
+
+  // --- terrain heights (50 m grid)
+  const H = upsample((x, y) => {
+    const n = nz.fbm(x / 12000 + o[0], y / 12000 + o[1], 5);
+    const r = 1 - Math.abs(2 * nz.fbm(x / 5500 + o[2], y / 5500 + o[3], 3) - 1);
+    return (n - 0.5) * 2.6 + 0.9 * (r * r - 0.45);
+  });
+  let lo = Infinity, hi = -Infinity;
+  for (let k = 0; k < H.length; k++) { if (H[k] < lo) lo = H[k]; if (H[k] > hi) hi = H[k]; }
+  for (let k = 0; k < H.length; k++) H[k] = 70 + 300 * (H[k] - lo) / (hi - lo);
+
+  // --- river: meanders north to south, carves a valley
+  const river = [];
+  let rx = R.range(0.22, 0.88) * MAP_W, ry = -300, hd = 180 + R.range(-25, 25);
+  while (ry < MAP_H + 300) {
+    river.push([rx, ry]);
+    hd += R.norm() * 13 + (180 - hd) * 0.07; hd = clamp(hd, 125, 235);
+    const d = dirOf(hd); rx = clamp(rx + d[0] * 300, 1500, MAP_W - 1500); ry += d[1] * 300;
+  }
+  const RD = new Float32Array(GX * GY).fill(1e9);
+  const RC = 2600, rc = Math.ceil(RC / CELL);
+  for (let s = 0; s < river.length - 1; s++) {
+    const [ax, ay] = river[s], [bx, by] = river[s + 1];
+    for (let u = 0; u < 3; u++) {
+      const px = lerp(ax, bx, u / 3), py = lerp(ay, by, u / 3);
+      const ci = Math.round(px / CELL), cj = Math.round(py / CELL);
+      for (let j = Math.max(0, cj - rc); j <= Math.min(GY - 1, cj + rc); j++) {
+        for (let i = Math.max(0, ci - rc); i <= Math.min(GX - 1, ci + rc); i++) {
+          const d = Math.hypot(i * CELL - px, j * CELL - py), k = j * GX + i;
+          if (d < RD[k]) RD[k] = d;
+        }
+      }
+    }
+  }
+  for (let k = 0; k < H.length; k++) if (RD[k] < RC) { const f = 1 - RD[k] / RC; H[k] = lerp(H[k], 45, f * f * 0.92); }
+  lo = Infinity; hi = -Infinity; let sum = 0;
+  for (let k = 0; k < H.length; k++) { if (H[k] < lo) lo = H[k]; if (H[k] > hi) hi = H[k]; sum += H[k]; }
+  W.H = H; W.hmin = lo; W.hmax = hi; W.meanH = sum / H.length; W.river = river;
+  W.riverDist = (x, y) => RD[clamp(Math.round(y / CELL), 0, GY - 1) * GX + clamp(Math.round(x / CELL), 0, GX - 1)];
+
+  // --- forest mask
+  const Fv = upsample((x, y) => nz.fbm(x / 2600 + o[4], y / 2600 + o[5], 4));
+  const F = new Uint8Array(GX * GY);
+  for (let k = 0; k < F.length; k++) F[k] = Math.round(255 * smooth(0.55, 0.61, Fv[k]));
+  W.F = F;
+
+  // --- front lines: FLET (enemy) and FLOT (own), grey zone between. Own side is west.
+  const NF = MAP_H / FRONT_STEP + 1, fe = new Float32Array(NF), ff = new Float32Array(NF);
+  const base = MAP_W * R.range(0.33, 0.39), a1 = R.range(1400, 3000), l1 = R.range(10000, 18000), p1 = R.range(0, 6.28), a2 = R.range(400, 1000), l2 = R.range(3000, 5500), p2 = R.range(0, 6.28);
+  for (let k = 0; k < NF; k++) {
+    const y = k * FRONT_STEP;
+    fe[k] = base + a1 * Math.sin(2 * Math.PI * y / l1 + p1) + a2 * Math.sin(2 * Math.PI * y / l2 + p2) + 1400 * (nz.fbm(y / 2200 + o[6], o[7], 3) - 0.5);
+    ff[k] = fe[k] - (1100 + 2600 * smooth(0.3, 0.7, nz.fbm(y / 8000 + o[8], o[9], 3)));
+  }
+  W.fe = fe; W.ff = ff;
+  W.front = y => { const f = clamp(y / FRONT_STEP, 0, NF - 1.0001), k = Math.floor(f), t = f - k; return { e: lerp(fe[k], fe[k + 1], t), f: lerp(ff[k], ff[k + 1], t) }; };
+
+  // --- towns
+  const names = TOWN_NAMES.slice(); for (let i = names.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [names[i], names[j]] = [names[j], names[i]]; }
+  const towns = [], nTowns = R.int(8, 11);
+  for (let tries = 0; tries < 600 && towns.length < nTowns; tries++) {
+    const x = R.range(2500, MAP_W - 2500), y = R.range(2500, MAP_H - 2500);
+    if (W.riverDist(x, y) < 700) continue;
+    if (towns.some(t => Math.hypot(t.x - x, t.y - y) < 5200)) continue;
+    const r = R.range(450, 1250), rot = R.range(0, Math.PI / 2), b = [];
+    const nb = Math.round(r * r / 7000);
+    for (let n = 0; n < nb; n++) {
+      const rr = r * Math.pow(R(), 0.7), aa = R.range(0, 2 * Math.PI);
+      let lx = Math.round(rr * Math.cos(aa) / 85) * 85, ly = Math.round(rr * Math.sin(aa) / 70) * 70;
+      lx += R.range(-18, 18); ly += R.range(-15, 15);
+      b.push([x + lx * Math.cos(rot) - ly * Math.sin(rot), y + lx * Math.sin(rot) + ly * Math.cos(rot), R.range(18, 48), R.range(14, 34)]);
+    }
+    towns.push({ x, y, r, rot, b, name: names[towns.length % names.length] });
+  }
+  W.towns = towns;
+
+  // --- launch site (own side) and routes
+  const yL = R.range(0.3, 0.7) * MAP_H;
+  W.launch = { x: Math.max(2500, W.front(yL).f - R.range(7000, 10000)), y: yL };
+  W.route1End = { x: MAP_W - 2500, y: clamp(yL + R.range(-0.3, 0.3) * MAP_H, 3000, MAP_H - 3000) };
+  W.route2End = { x: MAP_W - 3500, y: clamp(yL + R.range(-0.2, 0.2) * MAP_H, 4000, MAP_H - 4000) };
+
+  // --- roads: minimum spanning tree over towns and launch site, plus a few cross links
+  const nodes = towns.map(t => [t.x, t.y]).concat([[W.launch.x, W.launch.y]]);
+  const inTree = [0], edges = [];
+  while (inTree.length < nodes.length) {
+    let best = null;
+    for (const a of inTree) for (let b = 0; b < nodes.length; b++) {
+      if (inTree.includes(b)) continue;
+      const d = Math.hypot(nodes[a][0] - nodes[b][0], nodes[a][1] - nodes[b][1]);
+      if (!best || d < best.d) best = { a, b, d };
+    }
+    inTree.push(best.b); edges.push([best.a, best.b]);
+  }
+  for (let e = 0; e < 3; e++) { const a = R.int(0, nodes.length - 1), b = R.int(0, nodes.length - 1); if (a !== b) edges.push([a, b]); }
+  W.roads = edges.map(([a, b], idx) => {
+    let pts = [nodes[a], nodes[b]];
+    for (let lv = 0; lv < 4; lv++) {
+      const np = [pts[0]];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p = pts[i], q = pts[i + 1], L = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, off = R.norm() * L * 0.1;
+        np.push([(p[0] + q[0]) / 2 - (q[1] - p[1]) / L * off, (p[1] + q[1]) / 2 + (q[0] - p[0]) / L * off], q);
+      }
+      pts = np;
+    }
+    return { pts, major: idx < 3 };
+  });
+
+  // --- reflecting hills: local maxima with real prominence
+  const refl = [], S = 4;
+  for (let j = S * 3; j < GY - S * 3; j += S) for (let i = S * 3; i < GX - S * 3; i += S) {
+    const h = H[j * GX + i]; let isMax = true;
+    for (let dj = -20; dj <= 20 && isMax; dj += 5) for (let di = -20; di <= 20; di += 5) {
+      const jj = j + dj, ii = i + di; if (jj < 0 || ii < 0 || jj >= GY || ii >= GX || (di === 0 && dj === 0)) continue;
+      if (H[jj * GX + ii] > h) { isMax = false; break; }
+    }
+    if (!isMax) continue;
+    let mn = h; for (let a = 0; a < 16; a++) { const ii = clamp(Math.round(i + 40 * Math.cos(a * Math.PI / 8)), 0, GX - 1), jj = clamp(Math.round(j + 40 * Math.sin(a * Math.PI / 8)), 0, GY - 1); mn = Math.min(mn, H[jj * GX + ii]); }
+    if (h - mn > 45) refl.push({ x: i * CELL, y: j * CELL, prom: h - mn });
+  }
+  refl.sort((a, b) => b.prom - a.prom);
+  W.reflectors = [];
+  for (const r of refl) { if (W.reflectors.length >= 45) break; if (W.reflectors.every(q => Math.hypot(q.x - r.x, q.y - r.y) > 1500)) W.reflectors.push(r); }
+
+  // --- emitters (enemy side)
+  let nC = clamp(Math.round(nEmit * 0.55 + R.range(-0.6, 0.6)), 1, nEmit - 1);
+  let nJ = nEmit >= 7 ? 2 : nEmit >= 3 ? 1 : (R() < 0.5 ? 1 : 0);
+  nJ = Math.min(nJ, nEmit - nC);
+  const nR = nEmit - nC - nJ;
+  const ems = [];
+  const place = (dmin, dmax, nearTown) => {
+    for (let tries = 0; tries < 400; tries++) {
+      let x, y;
+      if (nearTown && tries < 150) {
+        const t = R.pick(towns); x = t.x + R.range(-1200, 1200); y = t.y + R.range(-1200, 1200);
+        const d = x - W.front(y).e; if (d < dmin || d > dmax) continue;
+      } else { y = R.range(3000, MAP_H - 3000); x = W.front(y).e + R.range(dmin, dmax); }
+      if (x > MAP_W - 2500 || y < 2500 || y > MAP_H - 2500) continue;
+      if (ems.some(e => Math.hypot(e.x - x, e.y - y) < 2600)) continue;
+      if (W.riverDist(x, y) < 250) continue;
+      return { x, y };
+    }
+    const y = R.range(3000, MAP_H - 3000); return { x: Math.min(MAP_W - 2500, W.front(y).e + dmin + 500), y };
+  };
+  const hAt = (x, y) => terrainAt(W, x, y);
+  for (let i = 0; i < nC; i++) {
+    const sub = (i === 0 || R() < 0.68) ? 'fpv' : 'isr';
+    const p = sub === 'fpv' ? place(2000, 7000) : place(7000, 15000);
+    const e = { type: 'ctrl', sub, x: p.x, y: p.y, idx: ems.length };
+    e.band = sub === 'fpv' ? R.pick(['868 MHz', '915 MHz', '2.4 GHz']) : R.pick(['1.3 GHz', '2.4 GHz']);
+    e.sig = sub === 'fpv' ? `${e.band} · frequency hopping · steady packet cadence` : `${e.band} · hopping command uplink · continuous`;
+    e.subName = sub === 'fpv' ? 'FPV strike operator' : 'Recon UAS ground station';
+    if (sub === 'fpv') {
+      e.sorties = [];
+      let t = -R.range(0, 600);
+      while (t < MISSION_MAX_S + 200) {
+        let dur = R.range(420, 780);
+        const ty = clamp(e.y + R.range(-7000, 7000), 1500, MAP_H - 1500), tx = W.front(ty).f - R.range(-1500, 2500);
+        const dist = Math.hypot(tx - e.x, ty - e.y), out = dist / FPV_SPEED_MS;
+        if (out > dur - 90) dur = out + R.range(90, 200);
+        const ux = (tx - e.x) / dist, uy = (ty - e.y) / dist, lr = R.range(300, 700), dir = R() < 0.5 ? 1 : -1;
+        const lcx = tx + ux * lr, lcy = ty + uy * lr;
+        e.sorties.push({ t0: t, t1: t + dur, tx, ty, out, bend: R.range(-1500, 1500), nx: -uy, ny: ux, lcx, lcy, lr, a0: azOf(-ux, -uy) * D2R, w: dir * FPV_SPEED_MS / lr });
+        t += dur + R.range(150, 420);
+      }
+    } else {
+      const fy = clamp(e.y + R.range(-3000, 3000), 6000, MAP_H - 6000);
+      e.rt = { cx: W.front(fy).e - R.range(-500, 2500), cy: fy, L: R.range(4000, 7000), r: 1500, v: ISR_SPEED_MS, ph: R.range(0, 30000) };
+    }
+    ems.push(e);
+  }
+  for (let i = 0; i < nJ; i++) {
+    const p = place(3000, 10000);
+    const lo = R.pick([400, 700, 1200, 2200]);
+    ems.push({ type: 'jam', x: p.x, y: p.y, idx: ems.length, jamR: R.range(6000, 9500), sig: `${lo}–${Math.round(lo * 1.6)} MHz wideband noise · continuous` });
+  }
+  for (let i = 0; i < nR; i++) {
+    const p = place(1500, 14000, true);
+    const f = R.int(30, 87);
+    ems.push({ type: 'radio', x: p.x, y: p.y, idx: ems.length, sig: `VHF ${f} MHz · 25 kHz voice · push-to-talk` });
+  }
+  const counters = { ctrl: 0, jam: 0, radio: 0 }, prefix = { ctrl: 'C', jam: 'J', radio: 'R' };
+  for (const e of ems) { e.id = prefix[e.type] + (++counters[e.type]); e.z = hAt(e.x, e.y) + 4; }
+  // each controller's drone carries a video downlink: an airborne emitter
+  for (const c of ems.filter(e => e.type === 'ctrl')) {
+    const band = c.sub === 'fpv' ? R.pick(['5.8 GHz', '1.2 GHz']) : '2.2 GHz';
+    ems.push({ type: 'video', parent: c, idx: ems.length, id: 'U' + c.id.slice(1), agl: c.sub === 'fpv' ? FPV_AGL_M : ISR_AGL_M, sig: `${band} · ${band === '5.8 GHz' ? 'analog' : 'digital'} video carrier · 8–20 MHz wide` });
+  }
+  W.emitters = ems;
+  W.jammers = ems.filter(e => e.type === 'jam');
+  // dug-in unit positions along both lines (context only; they don't transmit in this model)
+  W.units = [];
+  for (const side of ['own', 'enemy']) {
+    for (let k = 0; k < 8; k++) {
+      const y = (k + 0.5 + R.range(-0.3, 0.3)) * MAP_H / 8, fr = W.front(y);
+      const x = side === 'own' ? fr.f - R.range(500, 2600) : fr.e + R.range(500, 3000);
+      if (ems.some(e => e.type !== 'video' && Math.hypot(e.x - x, e.y - y) < 1800)) continue;
+      W.units.push({ side, x, y });
+    }
+  }
+  return W;
+}
+
+// Evaluate f on a 100 m lattice and fill the 50 m grid bilinearly (4x fewer noise calls).
+function upsample(f) {
+  const cx = GX / 2 + 1, cy = GY / 2 + 1, C = new Float32Array(cx * cy), out = new Float32Array(GX * GY);
+  for (let j = 0; j < cy; j++) for (let i = 0; i < cx; i++) C[j * cx + i] = f(i * CELL * 2, j * CELL * 2);
+  for (let j = 0; j < GY; j++) {
+    const fj = j / 2, j0 = Math.floor(fj), v = fj - j0;
+    for (let i = 0; i < GX; i++) {
+      const fi = i / 2, i0 = Math.floor(fi), u = fi - i0, k = j0 * cx + i0;
+      out[j * GX + i] = (C[k] * (1 - u) + C[k + 1] * u) * (1 - v) + (C[k + cx] * (1 - u) + C[k + cx + 1] * u) * v;
+    }
+  }
+  return out;
+}
+function terrainAt(W, x, y) {
+  const fx = clamp(x / CELL, 0, GX - 1.001), fy = clamp(y / CELL, 0, GY - 1.001);
+  const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j, k = j * GX + i, H = W.H;
+  return lerp(lerp(H[k], H[k + 1], u), lerp(H[k + GX], H[k + GX + 1], u), v);
+}
+
+/* ===================================================================== EMITTER DYNAMICS */
+// Position of a controller's drone at time t. The controller's beam tracks it.
+function uavPos(c, t) {
+  if (c.sub === 'isr') {
+    const { cx, cy, L, r, v, ph } = c.rt, per = 4 * L + 2 * Math.PI * r;
+    let s = ((t * v + ph) % per + per) % per, lx, ly;
+    if (s < 2 * L) { lx = r; ly = L - s; }
+    else if ((s -= 2 * L) < Math.PI * r) { const a = s / r; lx = r * Math.cos(a); ly = -L - r * Math.sin(a); }
+    else if ((s -= Math.PI * r) < 2 * L) { lx = -r; ly = -L + s; }
+    else { s -= 2 * L; const a = s / r; lx = -r * Math.cos(a); ly = L + r * Math.sin(a); }
+    return { x: cx + lx, y: cy + ly, on: true };
+  }
+  for (const so of c.sorties) {
+    if (t < so.t0 || t >= so.t1) continue;
+    const dt = t - so.t0;
+    if (dt < so.out) {
+      const f = dt / so.out, b = so.bend * Math.sin(Math.PI * f);
+      return { x: lerp(c.x, so.tx, f) + b * so.nx, y: lerp(c.y, so.ty, f) + b * so.ny, on: true };
+    }
+    const a = so.a0 + (dt - so.out) * so.w;
+    return { x: so.lcx + so.lr * Math.sin(a), y: so.lcy - so.lr * Math.cos(a), on: true };
+  }
+  return { x: c.x, y: c.y, on: false };
+}
+function txAt(W, e, t) {
+  if (e.type === 'ctrl') return uavPos(e, t).on;
+  if (e.type === 'video') return uavPos(e.parent, t).on;
+  if (e.type === 'jam') return true;
+  return hash01(W.seedNum ^ (e.idx * 7919 + Math.floor(t / DWELL_S) * 104729)) < RADIO_DUTY;
+}
+function emPos(W, e, t) {
+  if (e.type !== 'video') return { x: e.x, y: e.y, z: e.z };
+  const p = uavPos(e.parent, t);
+  return { x: p.x, y: p.y, z: terrainAt(W, p.x, p.y) + e.agl };
+}
+function beamAzAt(e, t) { const p = uavPos(e, t); return azOf(p.x - e.x, p.y - e.y); }
+
+/* ===================================================================== PHYSICS */
+function hPattern(off, bw) {           // horizontal gain (dB) at |off| degrees from boresight
+  const main = -12 * (off / bw) ** 2;  // -3 dB at the beam edge
+  if (off <= bw / 2) return main;
+  let g = Math.max(main, SIDELOBE_DB);
+  if (off > 100) g = Math.min(g, SIDELOBE_DB + (BACKLOBE_DB - SIDELOBE_DB) * Math.min(1, (off - 100) / 40));
+  return g;
+}
+function lobeOf(off, bw) { return off <= bw / 2 ? 'main' : off <= 110 ? 'side' : 'back'; }
+function lineOfSight(W, ax, ay, az, bx, by, bz) {
+  const N = 30;
+  for (let k = 2; k < N; k++) {
+    const f = k / N;
+    if (terrainAt(W, lerp(ax, bx, f), lerp(ay, by, f)) > lerp(az, bz, f)) return false;
+  }
+  return true;
+}
+
+/* ===================================================================== POSITION FIX */
+// Weighted least squares over bearing lines. Each line: n·(X - P) = 0 with n the line normal.
+// Weight = 1 / (range * sigma)^2, the expected cross-range error. Outliers dropped worst-first.
+function intersect(b1, b2) {
+  const d1 = dirOf(b1.az), d2 = dirOf(b2.az), den = d1[0] * d2[1] - d1[1] * d2[0];
+  if (Math.abs(den) < Math.sin(6 * D2R)) return null;           // nearly parallel: no useful crossing
+  const dx = b2.x - b1.x, dy = b2.y - b1.y;
+  const t1 = (dx * d2[1] - dy * d2[0]) / den, t2 = (dx * d1[1] - dy * d1[0]) / den;
+  return t1 > 0 && t2 > 0 ? [b1.x + d1[0] * t1, b1.y + d1[1] * t1] : null;
+}
+// Maximum-likelihood fix from bearings (Gauss-Newton on the angular residuals).
+// Each bearing's error is angular noise that grows with range, plus our own position
+// error while GNSS is denied. Ranges below rMin (the steep zone) are not trusted, so
+// bearings taken right next to a candidate point can't dominate. Outliers are dropped
+// one at a time, worst first, while any sits more than OUTLIER_GATE sigma off.
+function solveFix(bs, n, rMin = 300, prev = null, fullSearch = true) {
+  if (n < 2) return null;
+  const use = new Uint8Array(n).fill(1), G2 = OUTLIER_GATE * OUTLIER_GATE;
+  const warm = prev && prev.valid !== false && isFinite(prev.x);
+  if (warm) for (const k of prev.rej) use[k] = 0;        // carry over earlier rejections
+  const xr = (b, r) => Math.hypot(r * (b.sr + SIGMA_PER_KM_DEG * D2R * r / 1000), b.ns);   // cross-range sigma, m
+  const zAt = (P, i) => {
+    const b = bs[i], dx = P[0] - b.x, dy = P[1] - b.y, r = Math.max(Math.hypot(dx, dy), rMin);
+    return Math.abs(angDiff(b.az, azOf(dx, dy))) * D2R * r / xr(b, r);
+  };
+  const cost = P => { let c = 0; for (let i = 0; i < n; i++) if (use[i]) { const z = zAt(P, i); c += z * z; } return c; };
+  const stride = Math.max(1, Math.floor(n / 90));
+  const robust = P => { let c = 0; for (let i = 0; i < n; i += stride) { const z = zAt(P, i); c += z < OUTLIER_GATE ? z * z : G2; } return c; };
+  let A = null;
+  const normal = P => {                       // information matrix and gradient at P
+    let a11 = 0, a12 = 0, a22 = 0, g1 = 0, g2 = 0;
+    for (let i = 0; i < n; i++) {
+      if (!use[i]) continue;
+      const b = bs[i], dx = P[0] - b.x, dy = P[1] - b.y, ra = Math.max(Math.hypot(dx, dy), 1), r = Math.max(ra, rMin);
+      const j1 = -dy / ra / r, j2 = dx / ra / r;                 // d(azimuth)/d(position), rad per m
+      const sg = xr(b, r) / r, w = 1 / (sg * sg), e = angDiff(b.az, azOf(dx, dy)) * D2R;
+      a11 += w * j1 * j1; a12 += w * j1 * j2; a22 += w * j2 * j2; g1 += w * j1 * e; g2 += w * j2 * e;
+    }
+    return { a11, a12, a22, g1, g2, det: a11 * a22 - a12 * a12 };
+  };
+  const gn = (X0, iters) => {
+    let X = X0, c = cost(X);
+    for (let it = 0; it < iters; it++) {
+      const N = normal(X);
+      if (!(N.det > 1e-12 * (N.a11 + N.a22) ** 2)) break;
+      const d1 = (N.a22 * N.g1 - N.a12 * N.g2) / N.det, d2 = (N.a11 * N.g2 - N.a12 * N.g1) / N.det;
+      let step = 1, moved = false;
+      while (step > 1 / 64) {
+        const Xn = [X[0] + d1 * step, X[1] + d2 * step], cn = cost(Xn);
+        if (cn < c) { X = Xn; c = cn; moved = true; break; }
+        step /= 2;
+      }
+      if (!moved || Math.hypot(d1, d2) * step < 0.5) break;
+    }
+    return X;
+  };
+  // starting points: previous fix, best crossing of a pair of bearings, and the classic
+  // linear (pseudo-linear) intersection. Keep whichever the bearings agree with most.
+  const starts = [];
+  if (warm) starts.push([prev.x, prev.y]);
+  if (!warm || fullSearch) {
+    let a11 = 0, a12 = 0, a22 = 0, b1 = 0, b2 = 0;
+    for (let i = 0; i < n; i++) { const b = bs[i], c = Math.cos(b.az * D2R), sn = Math.sin(b.az * D2R), w = 1 / (b.sr * b.sr), d = c * b.x + sn * b.y; a11 += w * c * c; a12 += w * c * sn; a22 += w * sn * sn; b1 += w * c * d; b2 += w * sn * d; }
+    const det = a11 * a22 - a12 * a12;
+    if (det > 1e-9 * (a11 + a22) ** 2) starts.push([(a22 * b1 - a12 * b2) / det, (a11 * b2 - a12 * b1) / det]);
+    let bestPair = null, bestPairC = Infinity;
+    for (let k = 0; k < 24 && n >= 3; k++) {
+      const i = Math.floor(hash01(n * 977 + k * 131) * n), j = Math.floor(hash01(n * 613 + k * 71 + 7) * n);
+      if (i === j) continue;
+      const P = intersect(bs[i], bs[j]); if (!P) continue;
+      const c = robust(P); if (c < bestPairC) { bestPairC = c; bestPair = P; }
+    }
+    if (bestPair) starts.push(bestPair);
+  }
+  if (n === 2 && !starts.length) { const P = intersect(bs[0], bs[1]); if (P) starts.push(P); }
+  if (!starts.length) return { valid: false, nUsed: n, rej: [] };
+  let X = null, bestC = Infinity;
+  for (const S of starts) { const P = gn(S, 10), c = robust(P); if (c < bestC) { bestC = c; X = P; } }
+  // bearings rejected earlier come back if they now agree with the fit
+  if (warm) { let back = false; for (const k of prev.rej) if (zAt(X, k) < OUTLIER_GATE * 0.8) { use[k] = 1; back = true; } if (back) X = gn(X, 4); }
+  // outlier gate: drop the single worst bearing, re-fit, repeat
+  const rej = [];
+  for (let i = 0; i < n; i++) if (!use[i]) rej.push(i);
+  if (n >= OUTLIER_MIN_N) {
+    const cap = Math.floor(n * OUTLIER_MAX_FRAC);
+    while (rej.length < cap) {
+      let worst = -1, wz = OUTLIER_GATE;
+      for (let i = 0; i < n; i++) if (use[i]) { const zi = zAt(X, i); if (zi > wz) { wz = zi; worst = i; } }
+      if (worst < 0) break;
+      use[worst] = 0; rej.push(worst);
+      X = gn(X, 2);
+    }
+    if (rej.length) X = gn(X, 8);
+  }
+  // statistics and covariance
+  let chi = 0, nu = 0, behind = 0, ws = 0, wn = 0;
+  for (let i = 0; i < n; i++) {
+    if (!use[i]) continue;
+    const zi = zAt(X, i), b = bs[i], d = dirOf(b.az), r = Math.max(Math.hypot(X[0] - b.x, X[1] - b.y), rMin), w = 1 / xr(b, r) ** 2;
+    chi += zi * zi; nu++; ws += w; wn += w * b.ns * b.ns;
+    if ((X[0] - b.x) * d[0] + (X[1] - b.y) * d[1] < 0) behind++;
+  }
+  const N = normal(X);
+  if (!(N.det > 0)) return { valid: false, nUsed: nu, rej };
+  // inflate when bearings disagree more than modelled; add our own position error,
+  // which is common to every bearing and does not average out
+  const s2 = nu > 2 ? chi / (nu - 2) : 1, k = Math.max(1, s2), NS = ws ? wn / ws : 0;
+  const c11 = N.a22 / N.det * k + NS, c12 = -N.a12 / N.det * k, c22 = N.a11 / N.det * k + NS;
+  const tr = (c11 + c22) / 2, dd = Math.sqrt(((c11 - c22) / 2) ** 2 + c12 * c12);
+  const a = ELLIPSE_K * Math.sqrt(tr + dd), b = ELLIPSE_K * Math.sqrt(Math.max(tr - dd, 0));
+  return { x: X[0], y: X[1], a, b, ang: 0.5 * Math.atan2(2 * c12, c11 - c22), nUsed: nu, rej, s2, moving: nu >= 8 && s2 > MOVING_CHI2,
+    valid: nu >= 3 && isFinite(a) && a < FIX_VALID_M && behind <= 0.3 * nu };
+}
+
+/* ===================================================================== CLASSIFICATION */
+function classifyBurst(R, tr, snr) {
+  const q = clamp((snr - DETECT_SNR_DB) / (SNR_STRONG_DB - DETECT_SNR_DB), 0, 1);
+  let pc = CLASS_P_WEAK + (CLASS_P_STRONG - CLASS_P_WEAK) * q;
+  if (tr.e.type === 'jam') pc = Math.max(pc, 0.97);            // wideband noise is unmistakable
+  if (tr.e.type === 'video') pc = Math.max(pc, 0.85);          // wide continuous carrier, distinctive
+  let out = tr.e.type;
+  if (R() >= pc) {
+    const cf = CONFUSE[tr.e.type]; let u = R(), acc = 0;
+    for (const c of CLASSES) { if (c === tr.e.type) continue; acc += cf[c]; if (u < acc) { out = c; break; } }
+  }
+  let s = 0;
+  for (let k = 0; k < 4; k++) { const c = CLASSES[k]; tr.post[k] *= c === out ? pc : (1 - pc) * CONFUSE[c][out]; s += tr.post[k]; }
+  for (let k = 0; k < 4; k++) tr.post[k] = Math.max(tr.post[k] / s, 1e-6);
+}
+// Fingerprint posterior, adjusted by the motion cue from the bearings.
+function postView(post, fix) {
+  const p = post.slice();
+  if (fix && fix.moving) p[3] *= 6; else if (fix && fix.nUsed >= 8) p[3] *= 0.3;
+  const s = p[0] + p[1] + p[2] + p[3]; for (let k = 0; k < 4; k++) p[k] /= s;
+  let best = 0; for (let k = 1; k < 4; k++) if (p[k] > p[best]) best = k;
+  return { p, cls: CLASSES[best], conf: p[best] };
+}
+
+/* ===================================================================== SIMULATION */
+function simulate(W, cfg, mode) {
+  const R = makeRng(W.seed + '|sim|' + mode);
+  const alt = ALTITUDES[cfg.alt].m, altZ = W.meanH + alt, bw = cfg.beam;
+  const ems = W.emitters;
+  const tracks = ems.map((e, i) => ({ i, e, b: [], snaps: [], post: CLASSES.map(c => CLASS_PRIOR[c]), nDet: 0, nMiss: 0, lobes: [0, 0, 0], firstT: -1, lastT: -1e9, maxSnr: -99, fix: null, done: false, ev: {}, lastLobe: null, reported: null, class90: false, movingSaid: false, wasTx: false }));
+  const path = { t: [], x: [], y: [], h: [], nx: [], ny: [], ph: [], ocx: [], ocy: [], tg: [], lap: [] };
+  const misses = [], events = [];
+  const say = (t, text, kind = 'info') => events.push({ t, text, kind });
+  const once = (tr, key, t, gap) => { if (t - (tr.ev[key] ?? -1e9) < gap) return false; tr.ev[key] = t; return true; };
+  const L = W.launch, wp = mode === 0 ? W.route1End : W.route2End;
+  let px = L.x, py = L.y, hdg = azOf(wp.x - px, wp.y - py);
+  let dx = 0, dy = 0, dvx = 0, dvy = 0, jamIn = null, navSig = NAV_GNSS_SIG_M;
+  let phase = 'transit', target = null, ocx = 0, ocy = 0, lap = 0, prevA = null, lapsDone = 0, onStation = -1;
+  const oR = Math.max(ORBIT_R_MIN_M, alt * ORBIT_R_MULT);
+  const next = ems.map(() => R.range(0, DWELL_S));
+  let crossedF = false, crossedE = false, tEnd = MISSION_MAX_S;
+  say(0, `Launch at ${alt.toLocaleString('en-US')} m. Receiver scanning 30 MHz to 6 GHz. Steep zone radius about ${fmtM(alt)}.`);
+
+  const solveTrack = (tr, t, force) => {
+    const n = tr.b.length;
+    if (!force && n > 30 && n % (n > 150 ? 8 : n > 60 ? 4 : 2) !== 0) return;
+    tr.fix = solveFix(tr.b, n, alt, tr.fix, tr.snaps.length % 5 === 0);
+    const pv = postView(tr.post, tr.fix);
+    tr.snaps.push({ t, n, fix: tr.fix, post: tr.post.slice(), nDet: tr.nDet, nMiss: tr.nMiss, lobes: tr.lobes.slice() });
+    if (tr.fix && tr.fix.rej.some(k => tr.b[k].kind === 'false') && once(tr, 'refl', t, 600)) say(t, `Terrain reflection on ${tr.e.id} rejected by the outlier gate.`, 'warn');
+    if (tr.fix && tr.fix.moving && !tr.movingSaid) { tr.movingSaid = true; say(t, `${tr.e.id} bearings don't converge. Moving emitter, likely airborne; no fix attempted.`); }
+    if (!tr.class90 && pv.conf >= LOCK_CONF && tr.nDet >= 3) { tr.class90 = true; say(t, `${tr.e.id} classified: ${TYPE_NAME[pv.cls].toLowerCase()} (${pct(pv.conf)}).`, pv.cls === 'ctrl' ? 'good' : 'info'); }
+  };
+
+  const intercept = (tr, t, nX, nY, desens) => {
+    const e = tr.e;
+    const tx = txAt(W, e, t);
+    if (e.type === 'ctrl') {
+      if (!tx && tr.wasTx && t - tr.lastT < 240 && once(tr, 'silent', t, 420)) say(t, `${e.id} went silent. Its drone's sortie ended, so no bearings until the next one.`);
+      if (tx && !tr.wasTx && tr.nDet > 0 && once(tr, 'resume', t, 420)) say(t, `${e.id} transmitting again: new sortie, beam swinging toward the front.`);
+      tr.wasTx = tx;
+    }
+    if (!tx) return;
+    const ep = emPos(W, e, t);
+    const hx = px - ep.x, hy = py - ep.y, horiz = Math.hypot(hx, hy), dz = altZ - ep.z, slant = Math.hypot(horiz, dz);
+    const elev = Math.atan2(dz, Math.max(horiz, 1)) * R2D;
+    let gH = 0, gV = 0, lobe = null;
+    if (e.type === 'ctrl') {
+      const off = Math.abs(angDiff(azOf(hx, hy), beamAzAt(e, t)));
+      gH = hPattern(off, bw); lobe = lobeOf(off, bw);
+      gV = Math.max(VERT_FLOOR_DB, -12 * ((elev - 5) / VERT_BEAM_DEG) ** 2);
+    }
+    const masked = !lineOfSight(W, ep.x, ep.y, ep.z, px, py, altZ);
+    const snr0 = SNR_1KM_DB[e.type] - 10 * PATHLOSS_EXP * Math.log10(Math.max(slant, 100) / 1000) + gH + gV - cfg.noise - (e.type === 'jam' ? 0 : desens);
+    const snr = snr0 - (masked ? MASK_LOSS_DB : 0);
+    const pd = 1 / (1 + Math.exp(-(snr - DETECT_SNR_DB) / DETECT_SLOPE_DB));
+    const azTrue = azOf(ep.x - px, ep.y - py);
+    if (R() >= pd) {
+      if (pd >= MISS_MIN_P) { tr.nMiss++; misses.push({ t, x: px, y: py, az: azTrue, i: tr.i }); }
+      const pd0 = 1 / (1 + Math.exp(-(snr0 - DETECT_SNR_DB) / DETECT_SLOPE_DB));
+      if (masked && pd0 > 0.5 && e.type !== 'video' && once(tr, 'mask', t, 480)) say(t, `${e.id} masked by a ridge at ${alt.toLocaleString('en-US')} m. Bursts lost.`, 'warn');
+      return;
+    }
+    // --- caught a burst: measure a bearing
+    tr.nDet++; tr.lastT = t; tr.maxSnr = Math.max(tr.maxSnr, snr);
+    if (lobe) tr.lobes[lobe === 'main' ? 0 : lobe === 'side' ? 1 : 2]++;
+    const q = clamp((SNR_STRONG_DB - snr) / (SNR_STRONG_DB - DETECT_SNR_DB), 0, 1);
+    const steep = elev > STEEP_ELEV_DEG ? (elev - STEEP_ELEV_DEG) / (90 - STEEP_ELEV_DEG) : 0;
+    const sigReported = (SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * q) * (1 + (STEEP_SIGMA_MAX_MULT - 1) * steep);
+    const sigma = sigReported + SIGMA_PER_KM_DEG * horiz / 1000;
+    let kind = snr >= SNR_STRONG_DB - 3 ? 'strong' : 'weak', az = azTrue + R.norm() * sigma, len = horiz + 2000;
+    if (steep > 0 && R() < STEEP_WILD_P_MAX * steep) { az = azTrue + R.range(-90, 90); kind = 'steep'; len = 6000; }
+    else if (steep > 0.05) kind = 'steep';
+    else if (cfg.refl && e.type !== 'video' && R() < REFLECT_P) {
+      const cands = W.reflectors.filter(h => {
+        if (Math.hypot(h.x - ep.x, h.y - ep.y) > REFLECT_RANGE_M) return false;
+        const d = Math.abs(angDiff(azOf(h.x - px, h.y - py), azTrue)); return d > 6 && d < 70;
+      });
+      if (cands.length) { const h = R.pick(cands); az = azOf(h.x - px, h.y - py) + R.norm() * sigma; kind = 'false'; len = Math.hypot(h.x - px, h.y - py) + 2000; }
+    }
+    tr.b.push({ t, x: nX, y: nY, az: (az + 360) % 360, sr: sigReported * D2R, ns: navSig, kind, len: clamp(len, 3000, 26000), snr });
+    classifyBurst(R, tr, snr);
+    // narration
+    if (tr.firstT < 0) { tr.firstT = t; say(t, `New contact ${e.id}: ${e.sig}. Bearing ${fmtAz(az)}.`); }
+    if (e.type === 'ctrl' && lobe !== tr.lastLobe && once(tr, 'lobe', t, 200)) {
+      if (lobe === 'main') say(t, `Inside ${e.id}'s main beam. Strong signal, tight bearings, short window.`, 'good');
+      else if (lobe === 'side') say(t, `${e.id} heard on a side lobe. Faint, wider bearings, some bursts missed.`);
+      else say(t, `Hearing ${e.id} off its back lobe. Only works this close.`);
+      tr.lastLobe = lobe;
+    }
+    if (steep > 0.1 && e.type !== 'video' && once(tr, 'steep', t, 360)) say(t, `Nearly overhead ${e.id}. Steep look-down angle, bearings scattering.`, 'warn');
+    solveTrack(tr, t, false);
+  };
+
+  for (let t = 0; t <= MISSION_MAX_S; t += STEP_S) {
+    // --- guidance
+    let want;
+    if (phase === 'orbit') {
+      if (target.fix && target.fix.valid) { ocx += (target.fix.x - ocx) * 0.08; ocy += (target.fix.y - ocy) * 0.08; }
+      const rx = px - ocx, ry = py - ocy, r = Math.hypot(rx, ry);
+      want = azOf(rx, ry) + 90 + Math.atan(2 * (r - oR) / oR) * R2D;      // clockwise orbit
+    } else want = azOf(wp.x - px, wp.y - py);
+    const turn = clamp(angDiff(want, hdg), -TURN_RATE_DEG_S * STEP_S, TURN_RATE_DEG_S * STEP_S);
+    hdg = (hdg + turn + 360) % 360;
+    if (t > 0) { const d = dirOf(hdg); px += d[0] * CRUISE_MS * STEP_S; py += d[1] * CRUISE_MS * STEP_S; }
+
+    // --- electronic warfare: GNSS denial and receiver desensitisation
+    let jam = null, desens = 0;
+    for (const J of W.jammers) { const d = Math.hypot(px - J.x, py - J.y); if (d < J.jamR) { const v = JAM_DESENS_DB * Math.sqrt(1 - (d / J.jamR) ** 2); if (v > desens) { desens = v; jam = J; } } }
+    if (jam && !jamIn) { jamIn = jam; const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; say(t, `Entered ${jam.id}'s jammed zone. GNSS denied, navigation drifting, receiver desensitised.`, 'alert'); }
+    else if (!jam && jamIn) { say(t, `Left ${jamIn.id}'s zone. GNSS back; position had drifted ${fmtM(Math.hypot(dx, dy))}.`); jamIn = null; dx = dy = 0; }
+    if (jamIn) { dx += dvx * STEP_S; dy += dvy * STEP_S; navSig += NAV_DRIFT_MS * STEP_S; } else navSig = NAV_GNSS_SIG_M;
+    const nX = px + dx, nY = py + dy;
+
+    const fr = W.front(py);
+    if (!crossedF && px > fr.f) { crossedF = true; say(t, 'Crossed our forward line (FLOT) into the grey zone.'); }
+    if (!crossedE && px > fr.e) { crossedE = true; say(t, 'Crossed the enemy forward line (FLET). Over enemy territory.'); }
+
+    // --- intercepts
+    for (let i = 0; i < ems.length; i++) {
+      while (next[i] <= t) { next[i] += DWELL_S * R.range(0.85, 1.15); intercept(tracks[i], t, nX, nY, desens); }
+    }
+
+    // --- Pinpoint mode: lock, orbit, report
+    if (mode === 1) {
+      if (phase === 'transit') {
+        let best = null, bestP = 0;
+        for (const tr of tracks) {
+          if (tr.done || tr.nDet < LOCK_MIN_BURSTS || !tr.fix || !tr.fix.valid || tr.fix.moving || tr.fix.a > LOCK_FIX_MAX_M || t - tr.lastT > LOCK_RECENT_S) continue;
+          const pv = postView(tr.post, tr.fix);
+          if (pv.cls === 'ctrl' && pv.conf >= LOCK_CONF && pv.conf > bestP) { best = tr; bestP = pv.conf; }
+        }
+        if (best) {
+          target = best; phase = 'orbit'; ocx = best.fix.x; ocy = best.fix.y; lap = 0; prevA = null; lapsDone = 0; onStation = -1;
+          const louder = tracks.filter(tr => tr !== best && tr.nDet > 0 && tr.maxSnr > best.maxSnr && postView(tr.post, tr.fix).cls !== 'ctrl')
+            .sort((a, b) => b.maxSnr - a.maxSnr).slice(0, 2)
+            .map(tr => `${tr.e.id} (${TYPE_NAME[postView(tr.post, tr.fix).cls].toLowerCase()})`);
+          say(t, `Locked on ${best.e.id}: drone control link at ${pct(bestP)} after ${best.nDet} bursts, stationary. Rough fix ±${fmtM(best.fix.a)}.${louder.length ? ' Ignored louder ' + louder.join(' and ') + '.' : ''} Orbiting at ${fmtM(oR)}.`, 'good');
+        }
+      } else {
+        const rx = px - ocx, ry = py - ocy, r = Math.hypot(rx, ry), a = azOf(rx, ry);
+        const inBand = Math.abs(r - oR) < 0.35 * oR;
+        if (inBand && onStation < 0) onStation = t;
+        if (prevA !== null && inBand) lap += Math.abs(angDiff(a, prevA));
+        prevA = a;
+        const f = target.fix;
+        if (Math.floor(lap / 360) > lapsDone) { lapsDone++; say(t, `Lap ${lapsDone} around ${target.e.id}: uncertainty ±${fmtM(f ? f.a : NaN)} (95%).`); }
+        let exit = null;
+        if (lap >= 270 && f && f.valid && f.a <= FIX_DONE_M) exit = ['good', `Fix on ${target.e.id} reported: ±${fmtM(f.a)} (95%) from ${f.nUsed} bearings. Resuming transit.`];
+        else if (lap >= 360 * ORBIT_MAX_LAPS) exit = ['info', `${ORBIT_MAX_LAPS} laps flown. Reporting ${target.e.id} at ±${fmtM(f ? f.a : NaN)} and moving on.`];
+        else if (onStation >= 0 && t - Math.max(target.lastT, onStation) > SILENT_GIVEUP_S) exit = ['warn', `Nothing heard from ${target.e.id} in ${Math.round((t - Math.max(target.lastT, onStation)) / 60)} min on station. Reporting best fix ±${fmtM(f ? f.a : NaN)} and moving on.`];
+        if (exit) { say(t, exit[1], exit[0]); target.done = true; target.reported = f; phase = 'transit'; }
+      }
+    }
+
+    path.t.push(t); path.x.push(px); path.y.push(py); path.h.push(hdg); path.nx.push(nX); path.ny.push(nY);
+    path.ph.push(phase === 'orbit' ? 1 : 0); path.ocx.push(ocx); path.ocy.push(ocy); path.tg.push(target ? target.i : -1); path.lap.push(lap);
+
+    if (phase === 'transit' && Math.hypot(wp.x - px, wp.y - py) < 600) { tEnd = t; break; }
+    tEnd = t;
+  }
+  for (const tr of tracks) if (tr.b.length && (!tr.snaps.length || tr.snaps[tr.snaps.length - 1].n !== tr.b.length)) { tr.fix = solveFix(tr.b, tr.b.length, alt, tr.fix); tr.snaps.push({ t: tr.b[tr.b.length - 1].t, n: tr.b.length, fix: tr.fix, post: tr.post.slice(), nDet: tr.nDet, nMiss: tr.nMiss, lobes: tr.lobes.slice() }); }
+
+  // --- summary
+  const ground = tracks.filter(tr => tr.e.type !== 'video');
+  const grade = tr => !tr.nDet ? 'none' : tr.fix && tr.fix.valid && !tr.fix.moving ? (tr.fix.a < 400 ? 'tight' : tr.fix.a < 3000 ? 'rough' : 'poor') : 'poor';
+  const list = g => ground.filter(tr => grade(tr) === g).map(tr => tr.e.id).join(', ');
+  if (mode === 0) {
+    const parts = [];
+    if (list('tight')) parts.push(`tight fixes on ${list('tight')}`);
+    if (list('rough')) parts.push(`rough on ${list('rough')}`);
+    if (list('poor')) parts.push(`too few or poor bearings on ${list('poor')}`);
+    if (list('none')) parts.push(`nothing heard from ${list('none')}`);
+    say(tEnd, `Pass complete: ${parts.join('; ')}.`, 'good');
+  } else {
+    const rep = tracks.filter(tr => tr.reported).map(tr => `${tr.e.id} ±${fmtM(tr.reported.a)}`);
+    if (phase === 'orbit' && target) rep.push(`${target.e.id} ±${fmtM(target.fix ? target.fix.a : NaN)} (still orbiting)`);
+    say(tEnd, rep.length ? `Mission end. Pinpointed ${rep.join(', ')}. Everything else is from transit only.` : 'Mission end. No contact reached 90% control-link confidence, so no orbit was flown.', rep.length ? 'good' : 'warn');
+  }
+  return { mode, tracks, path, misses, events, tEnd, alt, altZ, oR, wp };
+}
+
+/* ===================================================================== BASE MAP */
+const BASE_RES = 25;   // metres per pixel of the cached base map
+function renderBase(W) {
+  const img = new ImageData(GX, GY), d = img.data, H = W.H, F = W.F, span = W.hmax - W.hmin;
+  const LX = -0.5, LY = -0.5, LZ = 0.7071;
+  for (let j = 0; j < GY; j++) {
+    const fr = W.front(j * CELL);
+    for (let i = 0; i < GX; i++) {
+      const k = j * GX + i, h = H[k];
+      const hx = (H[j * GX + Math.min(i + 1, GX - 1)] - H[j * GX + Math.max(i - 1, 0)]) / (2 * CELL);
+      const hy = (H[Math.min(j + 1, GY - 1) * GX + i] - H[Math.max(j - 1, 0) * GX + i]) / (2 * CELL);
+      const ex = 7, nx = -hx * ex, ny = -hy * ex, nl = Math.hypot(nx, ny, 1);
+      const sh = (nx * LX + ny * LY + LZ) / nl;
+      const e = (h - W.hmin) / span;
+      let r = 12 + 15 * e, g = 23 + 21 * e, b = 38 + 22 * e;
+      const f = F[k] / 255;
+      if (f > 0) { r = lerp(r, 11, 0.55 * f); g = lerp(g, 35, 0.55 * f); b = lerp(b, 38, 0.55 * f); }
+      const x = i * CELL;
+      if (x > fr.e) { r += 7; g -= 1; b -= 3; }
+      else if (x < fr.f) { g += 2; b += 4; }
+      else { const sp = hash01(k * 2654435761); r = lerp(r, 30, 0.35); g = lerp(g, 31, 0.35); b = lerp(b, 36, 0.35); const m = 0.86 + 0.18 * sp; r *= m; g *= m; b *= m; }
+      const Lm = clamp(1 + 1.7 * (sh - 0.7071), 0.45, 1.65);
+      d[k * 4] = r * Lm; d[k * 4 + 1] = g * Lm; d[k * 4 + 2] = b * Lm; d[k * 4 + 3] = 255;
+    }
+  }
+  const tmp = document.createElement('canvas'); tmp.width = GX; tmp.height = GY; tmp.getContext('2d').putImageData(img, 0, 0);
+  const base = document.createElement('canvas'); base.width = MAP_W / BASE_RES; base.height = MAP_H / BASE_RES;
+  const c = base.getContext('2d');
+  c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  c.drawImage(tmp, 0, 0, base.width, base.height);
+  const k = 1 / BASE_RES;
+
+  // contours, 40 m interval, index every 200 m (marching squares on a 100 m grid)
+  const st = 2, nxg = Math.floor((GX - 1) / st), nyg = Math.floor((GY - 1) / st), cw = CELL * st * k;
+  const S = (i, j) => H[(j * st) * GX + i * st];
+  for (let lv = Math.ceil(W.hmin / 40) * 40; lv < W.hmax; lv += 40) {
+    const index = lv % 200 === 0;
+    c.beginPath();
+    for (let j = 0; j < nyg; j++) for (let i = 0; i < nxg; i++) {
+      const a = S(i, j), b = S(i + 1, j), cc = S(i + 1, j + 1), dd = S(i, j + 1);
+      const id = (a > lv ? 8 : 0) | (b > lv ? 4 : 0) | (cc > lv ? 2 : 0) | (dd > lv ? 1 : 0);
+      if (id === 0 || id === 15) continue;
+      const T = () => [(i + (lv - a) / (b - a)) * cw, j * cw], Rr = () => [(i + 1) * cw, (j + (lv - b) / (cc - b)) * cw];
+      const B = () => [(i + (lv - dd) / (cc - dd)) * cw, (j + 1) * cw], Lf = () => [i * cw, (j + (lv - a) / (dd - a)) * cw];
+      const seg = (p, q) => { c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); };
+      switch (id) {
+        case 1: case 14: seg(Lf(), B()); break;
+        case 2: case 13: seg(B(), Rr()); break;
+        case 3: case 12: seg(Lf(), Rr()); break;
+        case 4: case 11: seg(T(), Rr()); break;
+        case 6: case 9: seg(T(), B()); break;
+        case 7: case 8: seg(Lf(), T()); break;
+        case 5: seg(T(), Rr()); seg(Lf(), B()); break;
+        case 10: seg(Lf(), T()); seg(B(), Rr()); break;
+      }
+    }
+    c.strokeStyle = index ? 'rgba(160,188,214,0.26)' : 'rgba(160,188,214,0.11)';
+    c.lineWidth = index ? 1.1 : 0.7; c.stroke();
+  }
+  // river
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  c.beginPath(); W.river.forEach(([x, y], n) => n ? c.lineTo(x * k, y * k) : c.moveTo(x * k, y * k));
+  c.strokeStyle = '#163552'; c.lineWidth = 8; c.stroke();
+  c.strokeStyle = cssVar('--water'); c.lineWidth = 4.4; c.stroke();
+  // roads
+  for (const r of W.roads) {
+    c.beginPath(); r.pts.forEach(([x, y], n) => n ? c.lineTo(x * k, y * k) : c.moveTo(x * k, y * k));
+    c.strokeStyle = 'rgba(6,12,22,0.7)'; c.lineWidth = r.major ? 4 : 3; c.stroke();
+    c.strokeStyle = r.major ? 'rgba(200,212,228,0.55)' : 'rgba(185,199,216,0.36)'; c.lineWidth = r.major ? 2 : 1.3; c.stroke();
+  }
+  // towns
+  for (const t of W.towns) {
+    c.fillStyle = 'rgba(150,170,195,0.07)'; c.beginPath(); c.arc(t.x * k, t.y * k, t.r * k * 1.05, 0, 2 * Math.PI); c.fill();
+    c.fillStyle = 'rgba(205,216,230,0.5)';
+    for (const [bx, by, bw, bh] of t.b) {
+      c.save(); c.translate(bx * k, by * k); c.rotate(t.rot); c.fillRect(-bw * k / 2, -bh * k / 2, Math.max(bw * k, 0.9), Math.max(bh * k, 0.9)); c.restore();
+    }
+  }
+  return base;
+}
+
+/* ===================================================================== RENDERING */
+const rootStyle = getComputedStyle(document.documentElement);
+function cssVar(name) { return rootStyle.getPropertyValue(name).trim(); }
+const COL = { ground: cssVar('--ground'), panel: cssVar('--panel'), ink: cssVar('--ink'), dim: cssVar('--ink-dim'), teal: cssVar('--teal'), amber: cssVar('--amber'), red: cssVar('--red'), purple: cssVar('--purple'), slate: cssVar('--slate') };
+function rgba(hex, a) { const n = parseInt(hex.replace('#', ''), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
+const TYPE_COL = { ctrl: COL.amber, jam: COL.purple, radio: COL.slate, video: COL.red };
+const KIND_COL = { strong: COL.teal, weak: COL.slate, false: COL.red, steep: COL.slate };
+const FONT_LABEL = '600 11.5px "Barlow Semi Condensed", "Arial Narrow", sans-serif';
+const FONT_DATA = '500 10.5px "IBM Plex Mono", ui-monospace, monospace';
+const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const cvs = document.getElementById('map'), ctx = cvs.getContext('2d');
+const view = { cx: MAP_W / 2, cy: MAP_H / 2, s: 0.02, w: 800, h: 600, dpr: 1, fitted: false };
+const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1 };
+const hlIdx = () => state.hover >= 0 ? state.hover : state.pin;
+let world = null, sims = null;
+
+function upto(arr, t) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m].t <= t) lo = m + 1; else hi = m; } return lo; }
+function snapAt(tr, t) { const n = upto(tr.snaps, t); return n ? tr.snaps[n - 1] : null; }
+function pathAt(sim, t) {
+  const P = sim.path, f = clamp(t / STEP_S, 0, P.t.length - 1.0001), i = Math.floor(f), u = f - i, j = Math.min(i + 1, P.t.length - 1);
+  return { x: lerp(P.x[i], P.x[j], u), y: lerp(P.y[i], P.y[j], u), h: (P.h[i] + angDiff(P.h[j], P.h[i]) * u + 360) % 360, nx: lerp(P.nx[i], P.nx[j], u), ny: lerp(P.ny[i], P.ny[j], u), ph: P.ph[i], ocx: P.ocx[i], ocy: P.ocy[i], tg: P.tg[i], lap: P.lap[i], i };
+}
+function fitView() {
+  view.cy = MAP_H / 2;
+  if (view.h > view.w * 1.05) {          // portrait phone: fill the height, centre on the front and enemy side
+    view.s = view.h / MAP_H * 0.97;
+    view.cx = clamp(MAP_W * 0.45, view.w / 2 / view.s, MAP_W - view.w / 2 / view.s);
+  } else { view.s = Math.min(view.w / MAP_W, view.h / MAP_H) * 0.97; view.cx = MAP_W / 2; }
+}
+const sMin = () => Math.min(view.w / MAP_W, view.h / MAP_H) * 0.6, S_MAX = 0.16;
+function zoomAt(sx, sy, factor) {
+  const s2 = clamp(view.s * factor, sMin(), S_MAX);
+  const wx = view.cx + (sx - view.w / 2) / view.s, wy = view.cy + (sy - view.h / 2) / view.s;
+  view.s = s2; view.cx = wx - (sx - view.w / 2) / s2; view.cy = wy - (sy - view.h / 2) / s2;
+}
+
+function halo(text, x, y, color, font, align = 'left') {
+  ctx.font = font; ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3.2; ctx.strokeStyle = rgba(COL.ground, 0.9); ctx.lineJoin = 'round'; ctx.strokeText(text, x, y);
+  ctx.fillStyle = color; ctx.fillText(text, x, y);
+}
+
+function draw(now) {
+  const { w, h, s } = view, sim = sims[state.tab], t = state.t[state.tab];
+  const ox = w / 2 - view.cx * s, oy = h / 2 - view.cy * s;
+  const X = x => ox + x * s, Y = y => oy + y * s;
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.fillStyle = COL.ground; ctx.fillRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(world.base, X(0), Y(0), MAP_W * s, MAP_H * s);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  // grid: 5 km, plus 1 km when zoomed in
+  const gridStep = s > 0.05 ? 1000 : 5000;
+  ctx.beginPath();
+  for (let gx = 0; gx <= MAP_W; gx += gridStep) { ctx.moveTo(X(gx), Y(0)); ctx.lineTo(X(gx), Y(MAP_H)); }
+  for (let gy = 0; gy <= MAP_H; gy += gridStep) { ctx.moveTo(X(0), Y(gy)); ctx.lineTo(X(MAP_W), Y(gy)); }
+  ctx.strokeStyle = 'rgba(150,180,210,0.09)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = 'rgba(150,180,210,0.3)'; ctx.strokeRect(X(0), Y(0), MAP_W * s, MAP_H * s);
+
+  // jammed zones
+  for (const J of world.jammers) {
+    ctx.beginPath(); ctx.arc(X(J.x), Y(J.y), J.jamR * s, 0, 2 * Math.PI);
+    ctx.fillStyle = rgba(COL.purple, 0.075); ctx.fill();
+    ctx.setLineDash([6, 5]); ctx.strokeStyle = rgba(COL.purple, 0.55); ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]);
+    halo(`EW ZONE ${J.id}`, X(J.x), Y(J.y - J.jamR) + 10, rgba(COL.purple, 0.95), FONT_LABEL, 'center');
+  }
+
+  // front lines
+  const frontPath = arr => { ctx.beginPath(); for (let k = 0; k < arr.length; k++) { const y = k * FRONT_STEP; k ? ctx.lineTo(X(arr[k]), Y(y)) : ctx.moveTo(X(arr[k]), Y(y)); } };
+  frontPath(world.ff); ctx.strokeStyle = rgba(COL.teal, 0.85); ctx.lineWidth = 2; ctx.stroke();
+  frontPath(world.fe); ctx.strokeStyle = rgba(COL.red, 0.85); ctx.setLineDash([9, 6]); ctx.stroke(); ctx.setLineDash([]);
+  {
+    const yl = MAP_H * 0.8, fr = world.front(yl);
+    halo('FLOT', X(fr.f) - 6, Y(yl), COL.teal, FONT_LABEL, 'right');
+    halo('FLET', X(fr.e) + 6, Y(yl), COL.red, FONT_LABEL, 'left');
+    const ym = MAP_H * 0.94, fm = world.front(ym);
+    if ((fm.e - fm.f) * s > 30) halo('GREY ZONE', X((fm.e + fm.f) / 2), Y(ym), COL.dim, FONT_LABEL, 'center');
+  }
+
+  // unit positions (NATO-style frames: own = rectangle, enemy = diamond, X = infantry)
+  if (s > 0.01) for (const u of world.units) {
+    const ux = X(u.x), uy = Y(u.y);
+    ctx.lineWidth = 1.2;
+    if (u.side === 'own') {
+      ctx.strokeStyle = rgba(COL.teal, 0.7); ctx.strokeRect(ux - 7, uy - 5, 14, 10);
+      ctx.beginPath(); ctx.moveTo(ux - 7, uy - 5); ctx.lineTo(ux + 7, uy + 5); ctx.moveTo(ux + 7, uy - 5); ctx.lineTo(ux - 7, uy + 5); ctx.stroke();
+    } else {
+      ctx.strokeStyle = rgba(COL.red, 0.7);
+      ctx.beginPath(); ctx.moveTo(ux, uy - 7); ctx.lineTo(ux + 7, uy); ctx.lineTo(ux, uy + 7); ctx.lineTo(ux - 7, uy); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ux - 3.5, uy - 3.5); ctx.lineTo(ux + 3.5, uy + 3.5); ctx.moveTo(ux + 3.5, uy - 3.5); ctx.lineTo(ux - 3.5, uy + 3.5); ctx.stroke();
+    }
+  }
+
+  // towns and launch site
+  if (s > 0.012) for (const tw of world.towns) halo(tw.name.toUpperCase(), X(tw.x), Y(tw.y + tw.r) + 9, 'rgba(210,222,236,0.78)', FONT_LABEL, 'center');
+  {
+    const L = world.launch, lx = X(L.x), ly = Y(L.y);
+    ctx.strokeStyle = COL.teal; ctx.lineWidth = 1.5; ctx.strokeRect(lx - 8, ly - 6, 16, 12);
+    ctx.beginPath(); ctx.moveTo(lx - 8, ly + 6); ctx.lineTo(lx + 8, ly - 6); ctx.stroke();
+    halo('UAS LAUNCH', lx, ly + 16, COL.teal, FONT_LABEL, 'center');
+  }
+
+  // planned route
+  {
+    const L = world.launch, wp = sim.wp;
+    ctx.beginPath(); ctx.moveTo(X(L.x), Y(L.y)); ctx.lineTo(X(wp.x), Y(wp.y));
+    ctx.setLineDash([2, 6]); ctx.strokeStyle = rgba(COL.teal, 0.35); ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(X(wp.x), Y(wp.y), 5, 0, 2 * Math.PI); ctx.strokeStyle = rgba(COL.teal, 0.6); ctx.stroke();
+  }
+
+  const ems = world.emitters;
+  // ground truth: beams and enemy drones
+  if (state.truth) {
+    for (const e of ems) {
+      if (e.type !== 'ctrl') continue;
+      const u = uavPos(e, t);
+      if (!u.on) continue;
+      const baz = azOf(u.x - e.x, u.y - e.y), half = state.beam / 2, ex = X(e.x), ey = Y(e.y), Lb = BEAM_DRAW_M * s;
+      const g = ctx.createRadialGradient(ex, ey, 0, ex, ey, Lb);
+      g.addColorStop(0, rgba(COL.amber, 0.34)); g.addColorStop(0.55, rgba(COL.amber, 0.12)); g.addColorStop(1, rgba(COL.amber, 0));
+      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.arc(ex, ey, Lb, (baz - half - 90) * D2R, (baz + half - 90) * D2R); ctx.closePath();
+      ctx.fillStyle = g; ctx.fill();
+      ctx.strokeStyle = rgba(COL.amber, 0.28); ctx.lineWidth = 1; ctx.stroke();
+      // their drone
+      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(X(u.x), Y(u.y)); ctx.setLineDash([2, 4]); ctx.strokeStyle = rgba(COL.red, 0.45); ctx.stroke(); ctx.setLineDash([]);
+      const u2 = uavPos(e, t + 2), hd = azOf(u2.x - u.x, u2.y - u.y);
+      ctx.save(); ctx.translate(X(u.x), Y(u.y)); ctx.rotate(hd * D2R);
+      ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 6); ctx.lineTo(0, 3); ctx.lineTo(-5, 6); ctx.closePath();
+      ctx.fillStyle = COL.red; ctx.fill(); ctx.restore();
+      if (s > 0.015) halo('U' + e.id.slice(1), X(u.x) + 8, Y(u.y) - 6, rgba(COL.red, 0.9), FONT_DATA);
+    }
+  }
+
+  // bearings
+  const hov = hlIdx();
+  for (const tr of sim.tracks) {
+    if (tr.e.type === 'video' && !state.clutter) continue;
+    const n = upto(tr.b, t); if (!n) continue;
+    const snap = snapAt(tr, t), rej = snap && snap.fix ? new Set(snap.fix.rej) : null;
+    const dimOthers = hov >= 0 && hov !== tr.i, isHov = hov === tr.i;
+    const start = Math.max(0, n - 260);
+    for (let k = start; k < n; k++) {
+      const b = tr.b[k], age = t - b.t;
+      if (!isHov && age > 180 && n - k > 40 && k % 3 !== 0) continue;
+      let a = 0.16 + 0.74 * Math.exp(-age / 90);
+      if (tr.e.type === 'video') a *= 0.45;
+      if (dimOthers) a *= 0.18; else if (isHov) a = Math.max(a, 0.55);
+      const isRej = rej && rej.has(k);
+      const d = dirOf(b.az), x0 = X(b.x), y0 = Y(b.y);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + d[0] * b.len * s, y0 + d[1] * b.len * s);
+      if (isRej) { ctx.setLineDash([5, 4]); ctx.strokeStyle = rgba(COL.ink, a * 0.6); ctx.lineWidth = 1; }
+      else {
+        ctx.setLineDash(b.kind === 'steep' ? [2, 3] : []);
+        ctx.strokeStyle = rgba(KIND_COL[b.kind], b.kind === 'weak' || b.kind === 'steep' ? a * 0.75 : a);
+        ctx.lineWidth = b.kind === 'strong' || b.kind === 'false' ? 1.4 : 1.1;
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  // missed bursts
+  {
+    const n = upto(sim.misses, t);
+    ctx.lineWidth = 1.1;
+    for (let k = Math.max(0, n - 200); k < n; k++) {
+      const m = sim.misses[k]; const tr = sim.tracks[m.i];
+      if (tr.e.type === 'video' && !state.clutter) continue;
+      if (hov >= 0 && hov !== m.i) continue;
+      const d = dirOf(m.az), a = hov === m.i ? 0.85 : 0.12 + 0.68 * Math.exp(-(t - m.t) / 100);
+      ctx.strokeStyle = rgba(COL.amber, a);
+      ctx.beginPath(); ctx.arc(X(m.x) + d[0] * 14, Y(m.y) + d[1] * 14, 2.2, 0, 2 * Math.PI); ctx.stroke();
+    }
+  }
+
+  // estimates
+  for (const tr of sim.tracks) {
+    const snap = snapAt(tr, t); if (!snap || !snap.fix || !snap.fix.valid) continue;
+    const pv = postView(snap.post, snap.fix);
+    if (snap.fix.moving || (pv.cls === 'video' && pv.conf > 0.7)) continue;
+    const f = snap.fix, ex = X(f.x), ey = Y(f.y), col = TYPE_COL[pv.cls], isHov = hov === tr.i, dimmed = hov >= 0 && !isHov;
+    ctx.globalAlpha = dimmed ? 0.3 : 1;
+    if (state.truth) { const tp = emPos(world, tr.e, t); ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(X(tp.x), Y(tp.y)); ctx.setLineDash([1, 3]); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.stroke(); }
+    ctx.beginPath(); ctx.ellipse(ex, ey, Math.max(f.a * s, 1.5), Math.max(f.b * s, 1.5), f.ang, 0, 2 * Math.PI);
+    ctx.fillStyle = rgba(col, 0.07); ctx.fill();
+    ctx.setLineDash([5, 4]); ctx.strokeStyle = rgba(col, 0.95); ctx.lineWidth = isHov ? 2 : 1.4; ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(ex - 5, ey - 5); ctx.lineTo(ex + 5, ey + 5); ctx.moveTo(ex + 5, ey - 5); ctx.lineTo(ex - 5, ey + 5);
+    ctx.strokeStyle = rgba(COL.ground, 0.9); ctx.lineWidth = 4; ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8; ctx.stroke();
+    halo(`${tr.e.id} ±${fmtM(f.a)}`, ex + 9, ey + 10, '#ffffff', FONT_DATA);
+    ctx.globalAlpha = 1;
+  }
+
+  // emitters (ground truth)
+  if (state.truth) {
+    const pulse = REDUCED ? 0.5 : (now / 1600) % 1;
+    for (const e of ems) {
+      if (e.type === 'video') continue;
+      const ex = X(e.x), ey = Y(e.y), on = txAt(world, e, t), col = TYPE_COL[e.type];
+      if (e.type === 'jam') {
+        for (let r = 0; r < 3; r++) { const ph = (pulse + r / 3) % 1; ctx.beginPath(); ctx.arc(ex, ey, 8 + ph * 26, 0, 2 * Math.PI); ctx.strokeStyle = rgba(col, 0.7 * (1 - ph)); ctx.lineWidth = 1.3; ctx.stroke(); }
+      }
+      if (e.type === 'radio') {
+        ctx.lineWidth = 1.8; ctx.strokeStyle = col; ctx.strokeRect(ex - 5.5, ey - 5.5, 11, 11);
+        if (on) { ctx.fillStyle = rgba(col, 0.6); ctx.fillRect(ex - 3, ey - 3, 6, 6); }
+      } else {
+        ctx.save(); ctx.translate(ex, ey); ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = on ? col : rgba(col, 0.25); ctx.fillRect(-5, -5, 10, 10);
+        ctx.strokeStyle = on ? rgba(COL.ground, 0.9) : col; ctx.lineWidth = 1.3; ctx.strokeRect(-5, -5, 10, 10); ctx.restore();
+      }
+      halo(e.id + (e.type === 'ctrl' && !on ? ' silent' : ''), ex + 10, ey - 8, on ? col : rgba(col, 0.7), FONT_DATA);
+    }
+  }
+
+  // our drone
+  const p = pathAt(sim, t);
+  if (p.ph === 1) {
+    ctx.beginPath(); ctx.arc(X(p.ocx), Y(p.ocy), sim.oR * s, 0, 2 * Math.PI);
+    ctx.setLineDash([7, 6]); ctx.strokeStyle = rgba(COL.teal, 0.5); ctx.lineWidth = 1.3; ctx.stroke(); ctx.setLineDash([]);
+    halo('ORBIT', X(p.ocx), Y(p.ocy - sim.oR) - 9, rgba(COL.teal, 0.9), FONT_LABEL, 'center');
+  }
+  {
+    const P = sim.path; ctx.beginPath();
+    for (let i = 0; i <= p.i; i++) i ? ctx.lineTo(X(P.x[i]), Y(P.y[i])) : ctx.moveTo(X(P.x[i]), Y(P.y[i]));
+    ctx.lineTo(X(p.x), Y(p.y)); ctx.strokeStyle = rgba(COL.teal, 0.75); ctx.lineWidth = 1.7; ctx.stroke();
+  }
+  const rs = sim.alt * s;
+  ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), rs, 0, 2 * Math.PI);
+  ctx.fillStyle = rgba(COL.teal, 0.05); ctx.fill();
+  ctx.setLineDash([3, 4]); ctx.strokeStyle = rgba(COL.teal, 0.55); ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
+  if (rs > 34) halo('STEEP ZONE', X(p.x), Y(p.y) + rs + 9, rgba(COL.teal, 0.8), FONT_LABEL, 'center');
+  const drift = Math.hypot(p.nx - p.x, p.ny - p.y);
+  if (drift > 25) {
+    ctx.beginPath(); ctx.moveTo(X(p.x), Y(p.y)); ctx.lineTo(X(p.nx), Y(p.ny)); ctx.strokeStyle = rgba(COL.purple, 0.8); ctx.lineWidth = 1; ctx.stroke();
+    ctx.beginPath(); ctx.arc(X(p.nx), Y(p.ny), 5, 0, 2 * Math.PI); ctx.stroke();
+    halo(`NAV ${fmtM(drift)}`, X(p.nx) + 8, Y(p.ny) + 8, rgba(COL.purple, 0.95), FONT_DATA);
+  }
+  ctx.save(); ctx.translate(X(p.x), Y(p.y)); ctx.rotate(p.h * D2R);
+  ctx.beginPath();
+  ctx.moveTo(0, -11); ctx.lineTo(1.6, -5); ctx.lineTo(13, -2); ctx.lineTo(13, 0.5); ctx.lineTo(1.6, 0); ctx.lineTo(1.1, 7); ctx.lineTo(4.5, 9); ctx.lineTo(4.5, 10.5);
+  ctx.lineTo(-4.5, 10.5); ctx.lineTo(-4.5, 9); ctx.lineTo(-1.1, 7); ctx.lineTo(-1.6, 0); ctx.lineTo(-13, 0.5); ctx.lineTo(-13, -2); ctx.lineTo(-1.6, -5); ctx.closePath();
+  ctx.fillStyle = COL.teal; ctx.strokeStyle = rgba(COL.ground, 0.95); ctx.lineWidth = 2; ctx.stroke(); ctx.fill();
+  ctx.restore();
+
+  // screen furniture: grid labels, scale bar, north arrow
+  ctx.font = FONT_DATA; ctx.fillStyle = 'rgba(170,190,212,0.75)';
+  const labStep = gridStep * (s * gridStep < 40 ? 2 : 1);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let gx = 0; gx <= MAP_W; gx += labStep) { const sx = X(gx); if (sx > 30 && sx < w - 60) halo(String(gx / 1000).padStart(2, '0'), sx, Math.max(8, Y(0) + 8), 'rgba(170,190,212,0.8)', FONT_DATA, 'center'); }
+  for (let gy = 0; gy <= MAP_H; gy += labStep) { const sy = Y(gy); if (sy > 20 && sy < h - 40) halo(String((MAP_H - gy) / 1000).padStart(2, '0'), Math.max(8, X(0) + 6), sy, 'rgba(170,190,212,0.8)', FONT_DATA, 'left'); }
+  const nice = [500, 1000, 2000, 5000, 10000, 20000]; let Ls = nice[0]; for (const v of nice) if (v * s <= 150) Ls = v;
+  const bx = 16, by = h - (w < 560 ? 44 : 18), bl = Ls * s;
+  ctx.fillStyle = rgba(COL.ground, 0.75); ctx.fillRect(bx - 6, by - 22, bl + 64, 30);
+  ctx.strokeStyle = COL.ink; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(bx, by - 5); ctx.lineTo(bx, by); ctx.lineTo(bx + bl, by); ctx.lineTo(bx + bl, by - 5); ctx.moveTo(bx + bl / 2, by); ctx.lineTo(bx + bl / 2, by - 3); ctx.stroke();
+  halo(Ls >= 1000 ? Ls / 1000 + ' km' : Ls + ' m', bx + bl / 2, by - 13, COL.ink, FONT_DATA, 'center');
+  const nx = bx + bl + 34;
+  ctx.beginPath(); ctx.moveTo(nx, by - 16); ctx.lineTo(nx + 5, by - 2); ctx.lineTo(nx, by - 6); ctx.lineTo(nx - 5, by - 2); ctx.closePath(); ctx.fillStyle = COL.ink; ctx.fill();
+  halo('N', nx + 13, by - 9, COL.ink, FONT_LABEL, 'center');
+}
+
+/* ===================================================================== PANEL */
+const $ = id => document.getElementById(id);
+const rowEls = new Map();
+const silentNote = Object.assign(document.createElement('p'), { className: 'empty' });
+const BRIEF = [
+  { title: 'Straight pass survey', text: 'One straight line across the sector, taking a bearing on every burst caught. Beam direction decides who gets a tight fix and who stays vague.' },
+  { title: 'Pinpoint on contact', text: 'Transit until a contact is classified as a drone control link at 90% or more and is not moving. Then orbit it outside the steep zone until the fix is tight.' },
+];
+function grade(f) { return !f || !f.valid || f.nUsed < 8 ? 'poor' : f.a < 400 ? 'tight' : f.a < 3000 ? 'rough' : 'poor'; }
+function lobeText(l) { return l[0] + l[1] + l[2] === 0 ? '' : `main ${l[0]} · side ${l[1]} · back ${l[2]}`; }
+
+function updatePanel() {
+  const sim = sims[state.tab], t = state.t[state.tab], p = pathAt(sim, t);
+  $('tnow').textContent = 'T+' + fmtT(t); $('tend').textContent = fmtT(sim.tEnd);
+  $('scrub').value = Math.round(t / sim.tEnd * 1000);
+  $('briefTitle').textContent = BRIEF[state.tab].title; $('briefText').textContent = BRIEF[state.tab].text;
+  const altTxt = `ALT ${sim.alt.toLocaleString('en-US')} m`;
+  $('briefStatus').textContent = p.ph === 1 ? `${altTxt} · ORBIT ${world.emitters[p.tg].id} · LAP ${(p.lap / 360).toFixed(1)}` : `${altTxt} · ${t >= sim.tEnd ? 'MISSION COMPLETE' : 'TRANSIT'} · HDG ${fmtAz(p.h)}`;
+
+  // contacts at time t
+  const rows = [];
+  for (const tr of sim.tracks) {
+    const snap = snapAt(tr, t); if (!snap) continue;
+    if (tr.e.type === 'video' && !state.clutter) continue;
+    const pv = postView(snap.post, snap.fix), f = snap.fix && snap.fix.valid && !snap.fix.moving ? snap.fix : null;
+    const err = f ? Math.hypot(f.x - emPos(world, tr.e, t).x, f.y - emPos(world, tr.e, t).y) : NaN;
+    rows.push({ tr, snap, pv, f, err, nB: upto(tr.b, t) });
+  }
+  // best fix: in Pinpoint, the current or last locked target; otherwise tightest ground contact
+  let best = null;
+  const usable = rows.filter(r => r.f && r.pv.cls !== 'video');
+  if (state.tab === 1) { const tgi = sim.path.tg[p.i]; if (tgi >= 0) best = rows.find(r => r.tr.i === tgi) || null; }
+  if (!best && usable.length) best = usable.slice().sort((a, b) => (a.pv.cls === 'ctrl' ? 0 : 1) - (b.pv.cls === 'ctrl' ? 0 : 1) || a.f.a - b.f.a)[0];
+  const bf = $('bestfix');
+  if (!best) {
+    bf.innerHTML = `<p class="empty">No fix yet. A fix needs bearings on one emitter from at least two different positions.</p>`;
+    $('bfNote').textContent = '';
+  } else {
+    const { tr, pv, f, err, snap } = best, cls = pv.cls;
+    const used = f ? f.nUsed : 0, rejN = f ? f.rej.length : 0;
+    $('bfNote').textContent = state.tab === 1 && sim.path.tg[p.i] === tr.i ? 'locked target' : 'tightest so far';
+    bf.innerHTML = `<div class="fixhead"><span class="chip ${tr.e.type}">${tr.e.id}</span><div><div class="fixclass">${TYPE_NAME[cls]} <span class="fixsub">${pct(pv.conf)}</span></div><div class="fixsub">${tr.e.sig}</div></div></div>
+      <dl class="stats">
+        <div><dt>Error vs truth</dt><dd>${f ? fmtM(err) : '–'}</dd><small>known only in simulation</small></div>
+        <div><dt>Uncertainty 95%</dt><dd>${f ? '±' + fmtM(f.a) : '–'}</dd><small>${f ? `ellipse ${fmtM(f.a)} × ${fmtM(f.b)}` : 'bearings too parallel'}</small></div>
+        <div><dt>Bearings used</dt><dd>${used}<span> / ${snap.n}</span></dd><small>${rejN} rejected · ${snap.nMiss} bursts missed</small></div>
+        <div><dt>${tr.e.type === 'ctrl' ? 'Heard via' : 'Pattern'}</dt><dd style="font-size:15px">${tr.e.type === 'ctrl' ? (snap.lobes[0] ? 'main beam' : snap.lobes[1] ? 'side lobe' : 'back lobe') : 'omni'}</dd><small>${tr.e.type === 'ctrl' ? lobeText(snap.lobes) : 'radiates all directions'}</small></div>
+      </dl>`;
+  }
+
+  // contacts list
+  const order = { ctrl: 0, jam: 1, radio: 2, video: 3 };
+  rows.sort((a, b) => order[a.tr.e.type] - order[b.tr.e.type] || a.tr.e.id.localeCompare(b.tr.e.id));
+  const heardIds = new Set(rows.map(r => r.tr.i));
+  const silent = world.emitters.filter(e => e.type !== 'video' && !heardIds.has(sim.tracks[e.idx].i));
+  $('ccount').textContent = `${rows.length} heard · ${silent.length} not yet`;
+  const box = $('contacts'), seen = new Set();
+  rows.forEach(r => {
+    const { tr, pv, f, err, snap, nB } = r, g = grade(f);
+    const wrong = state.truth && pv.conf > 0.6 && pv.cls !== tr.e.type;
+    const q = snap.fix && snap.fix.moving ? 'moving' : f ? '±' + fmtM(f.a) : 'no fix';
+    const meta = [`${nB} brg`, f && f.nUsed < 8 ? 'few bearings' : null, f ? `${f.rej.length} rej` : null, snap.nMiss ? `${snap.nMiss} missed` : null, state.truth && f ? `err ${fmtM(err)}` : null, tr.e.type === 'ctrl' ? lobeText(snap.lobes) : null].filter(Boolean).join(' · ');
+    let el = rowEls.get(tr.i);
+    if (!el) { el = document.createElement('button'); el.type = 'button'; el.className = 'contact'; el.dataset.i = tr.i; rowEls.set(tr.i, el); }
+    const html = `<span class="chip ${tr.e.type}">${tr.e.id}</span><span class="cls">${TYPE_NAME[pv.cls]} <em>${pct(pv.conf)}</em>${wrong ? '<span class="bad">misread</span>' : ''}</span><span class="q ${snap.fix && snap.fix.moving ? 'poor' : g}">${q}</span><span class="meta">${meta}</span>`;
+    if (el._html !== html) { el.innerHTML = html; el._html = html; }
+    el.classList.toggle('hl', hlIdx() === tr.i);
+    el.setAttribute('aria-pressed', String(state.pin === tr.i));
+    box.appendChild(el); seen.add(tr.i);
+  });
+  for (const [i, el] of rowEls) if (!seen.has(i)) { el.remove(); }
+  silentNote.textContent = silent.length && state.truth ? `Not heard yet: ${silent.map(e => e.id).join(', ')}` : '';
+  box.appendChild(silentNote);
+
+  // log
+  const n = upto(sim.events, t), evs = sim.events.slice(Math.max(0, n - 7), n).reverse();
+  $('log').innerHTML = evs.map(e => `<li class="k-${e.kind}"><time>T+${fmtT(e.t)}</time><span>${e.text}</span></li>`).join('');
+}
+
+/* ===================================================================== UI WIRING */
+function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl }; }
+function rebuildSims(keep) {
+  const frac = keep && sims ? state.t.map((t, i) => t / sims[i].tEnd) : [0, 0];
+  sims = [simulate(world, cfg(), 0), simulate(world, cfg(), 1)];
+  state.t = frac.map((f, i) => clamp(f, 0, 1) * sims[i].tEnd);
+  if (REDUCED && !keep) state.t = sims.map(s => s.tEnd);
+}
+function rebuildWorld() {
+  state.pin = -1; state.hover = -1;
+  world = genWorld(state.seed, state.n);
+  world.base = renderBase(world);
+  rebuildSims(false);
+  if (view.w) fitView();
+  try { history.replaceState(null, '', '#' + state.seed); } catch (e) { /* hash not writable here */ }
+}
+function setPlaying(v) {
+  state.playing = v;
+  $('play').innerHTML = v ? '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="3" height="10" fill="currentColor"/><rect x="7" y="1" width="3" height="10" fill="currentColor"/></svg>Pause'
+    : '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 1 L11 6 L2 11 Z" fill="currentColor"/></svg>Play';
+}
+function syncControls() {
+  $('seed').value = state.seed;
+  $('nEmit').value = state.n; $('nEmitVal').textContent = state.n;
+  $('beam').value = state.beam; $('beamVal').textContent = state.beam + '°';
+  $('noise').value = state.noise; $('noiseVal').textContent = '+' + state.noise + ' dB';
+  $('refl').checked = state.refl; $('truth').checked = state.truth; $('clutter').checked = state.clutter;
+  const a = ALTITUDES[state.alt];
+  $('altVal').textContent = a.m.toLocaleString('en-US') + ' m';
+  $('altNote').textContent = `${a.note} Steep zone ${fmtM(a.m)}; orbit ${fmtM(Math.max(ORBIT_R_MIN_M, a.m * ORBIT_R_MULT))}.`;
+  document.querySelectorAll('#alt button').forEach((b, i) => b.setAttribute('aria-pressed', String(i === state.alt)));
+  document.querySelectorAll('#speed button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === state.speed)));
+  document.querySelectorAll('.tabs button').forEach((b, i) => b.setAttribute('aria-selected', String(i === state.tab)));
+  $('follow').setAttribute('aria-pressed', String(state.follow));
+}
+function newSeed() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 6; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
+
+$('alt').innerHTML = ALTITUDES.map((a, i) => `<button type="button" data-i="${i}">${a.label} · ${a.m.toLocaleString('en-US')} m</button>`).join('');
+$('constTable').innerHTML = [
+  ['Controller main-beam width (default)', BEAM_WIDTH_DEG + '°'],
+  ['Side lobe / back lobe', `${SIDELOBE_DB} / ${BACKLOBE_DB} dB`],
+  ['Bearing error, strong to weak', `±${SIGMA_STRONG_DEG}° to ±${SIGMA_WEAK_DEG}°`],
+  ['Extra error per km of range', `${SIGMA_PER_KM_DEG}°`],
+  ['Detection threshold (50% catch)', `${DETECT_SNR_DB} dB SNR`],
+  ['Control link SNR at 1 km, on boresight', `${SNR_1KM_DB.ctrl} dB`],
+  ['Path-loss exponent', PATHLOSS_EXP],
+  ['Receiver revisit per emitter', `${DWELL_S} s`],
+  ['Steep zone', `look-down over ${STEEP_ELEV_DEG}°`],
+  ['Terrain masking loss', `${MASK_LOSS_DB} dB`],
+  ['Reflection chance per bearing', pct(REFLECT_P)],
+  ['Jammer desensitisation', `up to ${JAM_DESENS_DB} dB`],
+  ['GNSS-denied drift', `${NAV_DRIFT_MS} m/s`],
+  ['Lock rule', `≥${pct(LOCK_CONF)} control link, ≥${LOCK_MIN_BURSTS} bursts, stationary`],
+  ['Drone speed', `${CRUISE_MS} m/s`],
+].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+
+document.querySelectorAll('.tabs button').forEach((b, i) => b.addEventListener('click', () => { state.tab = i; state.hover = -1; state.pin = -1; if (state.t[i] >= sims[i].tEnd) state.t[i] = 0; setPlaying(!REDUCED || state.playing); syncControls(); updatePanel(); }));
+$('reroll').addEventListener('click', () => { state.seed = newSeed(); rebuildWorld(); setPlaying(true); syncControls(); updatePanel(); });
+$('seed').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+  if (v.length >= 2) { state.seed = v; rebuildWorld(); setPlaying(true); }
+  syncControls(); updatePanel();
+});
+$('alt').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.alt = +b.dataset.i; rebuildSims(true); syncControls(); updatePanel(); });
+let debounce = null;
+const onSlider = (id, key, rebuild) => $(id).addEventListener('input', e => {
+  state[key] = +e.target.value; syncControls();
+  clearTimeout(debounce); debounce = setTimeout(() => { rebuild(); updatePanel(); }, 160);
+});
+onSlider('nEmit', 'n', () => { const f = state.t.map((t, i) => t / sims[i].tEnd); rebuildWorld(); state.t = f.map((x, i) => x * sims[i].tEnd); });
+onSlider('beam', 'beam', () => rebuildSims(true));
+onSlider('noise', 'noise', () => rebuildSims(true));
+$('refl').addEventListener('change', e => { state.refl = e.target.checked; rebuildSims(true); updatePanel(); });
+$('truth').addEventListener('change', e => { state.truth = e.target.checked; updatePanel(); });
+$('clutter').addEventListener('change', e => { state.clutter = e.target.checked; updatePanel(); });
+$('play').addEventListener('click', () => { const sim = sims[state.tab]; if (!state.playing && state.t[state.tab] >= sim.tEnd) state.t[state.tab] = 0; setPlaying(!state.playing); });
+$('scrub').addEventListener('input', e => { state.t[state.tab] = +e.target.value / 1000 * sims[state.tab].tEnd; updatePanel(); });
+$('speed').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.speed = +b.dataset.v; syncControls(); });
+$('zin').addEventListener('click', () => zoomAt(view.w / 2, view.h / 2, 1.5));
+$('zout').addEventListener('click', () => zoomAt(view.w / 2, view.h / 2, 1 / 1.5));
+$('fit').addEventListener('click', () => { state.follow = false; fitView(); syncControls(); });
+$('follow').addEventListener('click', () => { state.follow = !state.follow; if (state.follow && view.s < 0.04) view.s = 0.04; syncControls(); });
+const contactsEl = $('contacts');
+contactsEl.addEventListener('mouseover', e => { const b = e.target.closest('.contact'), v = b ? +b.dataset.i : -1; if (v !== state.hover) { state.hover = v; updatePanel(); } });
+contactsEl.addEventListener('mouseleave', () => { state.hover = -1; updatePanel(); });
+contactsEl.addEventListener('click', e => {
+  const b = e.target.closest('.contact'); if (!b) return;
+  const i = +b.dataset.i, tr = sims[state.tab].tracks[i], snap = snapAt(tr, state.t[state.tab]);
+  const target = snap && snap.fix && snap.fix.valid ? snap.fix : emPos(world, tr.e, state.t[state.tab]);
+  state.follow = false; state.pin = state.pin === i ? -1 : i; view.cx = target.x; view.cy = target.y; view.s = Math.max(view.s, 0.05);
+  syncControls(); updatePanel();
+});
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input, textarea, select')) return;
+  if (e.code === 'Space' && !e.target.closest('button')) { e.preventDefault(); $('play').click(); }
+});
+
+// map pan and zoom (mouse, touch, pinch)
+const ptrs = new Map(); let pinch = null;
+cvs.addEventListener('pointerdown', e => {
+  cvs.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY }); cvs.classList.add('dragging');
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: view.s }; }
+});
+cvs.addEventListener('pointermove', e => {
+  const prev = ptrs.get(e.pointerId); if (!prev) return;
+  const cur = { x: e.offsetX, y: e.offsetY };
+  if (ptrs.size === 1) {
+    view.cx -= (cur.x - prev.x) / view.s; view.cy -= (cur.y - prev.y) / view.s;
+    if (state.follow && Math.hypot(cur.x - prev.x, cur.y - prev.y) > 1) { state.follow = false; syncControls(); }
+  }
+  ptrs.set(e.pointerId, cur);
+  if (ptrs.size === 2 && pinch) { const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, pinch.s * d / pinch.d / view.s); }
+});
+const endPtr = e => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!ptrs.size) cvs.classList.remove('dragging'); };
+cvs.addEventListener('pointerup', endPtr); cvs.addEventListener('pointercancel', endPtr);
+cvs.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+cvs.addEventListener('dblclick', e => zoomAt(e.offsetX, e.offsetY, 1.8));
+
+function resize() {
+  const r = $('mapwrap').getBoundingClientRect();
+  view.w = Math.max(1, r.width); view.h = Math.max(1, r.height); view.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cvs.width = Math.round(view.w * view.dpr); cvs.height = Math.round(view.h * view.dpr);
+  if (!view.fitted) { fitView(); view.fitted = true; } else view.s = clamp(view.s, sMin(), S_MAX);
+}
+new ResizeObserver(resize).observe($('mapwrap'));
+
+// boot
+{
+  const h = (location.hash || '').replace('#', '').toUpperCase();
+  if (/^[A-Z0-9]{2,10}$/.test(h)) state.seed = h;
+}
+resize();
+rebuildWorld();
+setPlaying(state.playing);
+syncControls();
+updatePanel();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => updatePanel());
+let last = performance.now(), lastPanel = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const sim = sims[state.tab];
+  if (state.playing) {
+    state.t[state.tab] += dt * state.speed;
+    if (state.t[state.tab] >= sim.tEnd) { state.t[state.tab] = sim.tEnd; setPlaying(false); updatePanel(); }
+  }
+  if (state.follow) { const p = pathAt(sim, state.t[state.tab]); view.cx += (p.x - view.cx) * 0.2; view.cy += (p.y - view.cy) * 0.2; }
+  draw(now);
+  if (now - lastPanel > 180 && state.playing) { updatePanel(); lastPanel = now; }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
