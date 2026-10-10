@@ -45,11 +45,18 @@ A clean model is optimistic. The toggle adds the error a real sector introduces,
 
 Across 8 seeds × 3 altitudes × 2 tabs, the true position falls inside the 95% ellipse in 98% of located fixes with degradation on and 98% with it off. Degradation reduces how many emitters get located and pinpointed, and roughly 1% of located fixes can be confidently wrong (a tight ellipse on an ill-conditioned fix) — a real failure mode, left visible on purpose.
 
+## Dense spectrum and deinterleaving
+
+A real sector is not a handful of clean emitters — it is hundreds, overlapping in time and frequency. The simulator generates a configurable background population (friendly squad radios, cellular, Wi-Fi/Bluetooth, broadcast/satcom, vehicle mesh, and other units' control links) on top of the designated targets. Every emission becomes an anonymous burst, and an online clustering algorithm sorts the stream back into per-emitter tracks using frequency, bandwidth, hop signature and bearing — with co-channel collisions (a strong signal captures the channel), and re-acquisition of an intermittent emitter by its established location after a silence.
+
+The deinterleaver scores itself against ground truth and reports, per mission: emitters in the sector, bursts sorted, tracks formed, and for each designated target whether it was **isolated**, **merged** with another emitter, **split** across tracks, or **lost** in the clutter. It also counts the *other* control links it found (real emitters, just not the tasked target) and any *false* control-link tracks from clutter. The located fixes shown are the targets the deinterleaver could isolate; merged and split targets carry a widened, flagged uncertainty ellipse.
+
+One honest limit of the model: the located fix itself is computed from the target's own high-fidelity bearings (the validated direction-finding path). The deinterleaver decides whether, in the clutter, that target could have been isolated at all, and gates and degrades the result accordingly — it does not rebuild the fix from the imperfect clusters. Across 8 seeds x 3 altitudes x 2 tabs, the true position falls inside the 95% ellipse in about 98% of located fixes. The deinterleaver never suppresses a target the physics could locate; the "lost" ones are those that were unlocatable regardless.
+
 ## Still not modelled
 
 Where field data would matter most, and what a real system still has to solve:
 
-- Full deinterleaving at real spectral density (hundreds of overlapping emitters, not a handful).
 - A validated hop fingerprint — the Stage-4 values are placeholders until a field recording sets them.
 - 3D geolocation including emitter height.
 - An adversary that changes frequency, bursts briefly, or runs silent.

@@ -144,6 +144,14 @@ details.model td:last-child { text-align: right; font-family: var(--font-data); 
 details.model td:first-child { color: var(--ink-dim); }
 details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: var(--ink-dim); }
 
+.deint { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.dstat { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; border: 1px solid var(--rule); border-radius: 5px; padding: 6px 9px; background: var(--panel-2); min-width: 0; }
+.dstat span { font: 600 10px var(--font-label); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-dim); }
+.dstat b { font: 500 15px var(--font-data); font-variant-numeric: tabular-nums; }
+.dchips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; }
+.dchip { font: 600 11px var(--font-data); padding: 3px 7px; border-radius: 4px; border: 1px solid var(--rule); color: var(--ink-dim); }
+.dchip.iso { color: var(--teal); border-color: rgba(54,209,190,.4); }
+.dchip.mg, .dchip.sp { color: var(--amber); border-color: rgba(243,180,67,.4); }
 .funnel { display: flex; flex-direction: column; gap: 5px; }
 .fn { display: grid; grid-template-columns: 112px minmax(0, 1fr) 46px; gap: 9px; align-items: center; }
 .fn .fl { font: 600 11px var(--font-label); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -234,6 +242,11 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
       <p class="cap" id="pipeCap"></p>
     </section>
     <section>
+      <h2>Spectrum &amp; deinterleaving</h2>
+      <div class="deint" id="deintBox"></div>
+      <p class="cap" id="deintCap"></p>
+    </section>
+    <section>
       <h2>Scenario</h2>
       <div class="ctl">
         <div class="row">
@@ -242,8 +255,13 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
           <span class="note" id="altNote"></span>
         </div>
         <div class="row">
-          <label for="nEmit">Ground emitters <output id="nEmitVal" for="nEmit"></output></label>
+          <label for="nEmit">Target emitters <output id="nEmitVal" for="nEmit"></output></label>
           <input id="nEmit" type="range" min="2" max="10" step="1">
+        </div>
+        <div class="row">
+          <label for="density">Background spectrum <output id="densityVal" for="density"></output></label>
+          <input id="density" type="range" min="0" max="400" step="10">
+          <span class="note">Friendly, civilian and other-unit emitters the receiver must sort through before it can locate a target.</span>
         </div>
         <div class="row">
           <label for="beam">Controller beam width <output id="beamVal" for="beam"></output></label>
@@ -320,10 +338,11 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
         <p>This is a physics-based illustration for briefing and discussion. Every number on screen is a modelled estimate. None of it is real RF data, and none of it is a claim of field performance.</p>
         <p>Bearings are combined by weighted least squares. Each bearing is weighted by its expected cross-range error, its angular error times its range, so strong bearings count more than faint ones. The 95% ellipse comes from the solution covariance, inflated when the bearings disagree more than the model expects. Bearings more than 3&sigma; from the fix are dropped one at a time, worst first, up to a quarter of them, so reflections and steep-zone bearings don't drag the fix away.</p>
         <p>Contacts are classified by signal fingerprint: band, hopping, cadence and bandwidth. Confidence builds burst by burst and grows faster on strong signals. A contact whose bearings never converge is treated as moving.</p>
+        <p><strong>Dense spectrum and deinterleaving.</strong> The sector carries a configurable background population of friendly, civilian and other-unit emitters on top of the designated targets. Every emission becomes an anonymous burst, and an online clustering algorithm sorts the stream back into tracks by frequency, bandwidth, hop signature and bearing, with co-channel collisions and re-acquisition across silences. It scores itself against ground truth: each target is isolated, merged, split, or lost in the clutter, and the panel reports the tracks formed, the other control links found, and any false control-link tracks. Located fixes are the targets the deinterleaver could isolate; merged and split targets carry a widened, flagged ellipse.</p>
         <p><strong>Five-stage classification pipeline.</strong> Every event the receiver hears runs through five gates in order: band, self-noise blanking, noise-floor margin, hop fingerprint, then persistence and geometric convergence. A signal must pass all five to be shown as a located transmitter. The cheap gates run first and discard the most, so the expensive direction-finding only runs on a shrinking candidate set. The simulator proves the logic flows — the right signals survive and clutter dies — but it does not prove the fingerprint separates a real target from real-world clutter. That proof needs a field recording, and the fingerprint values are placeholders until then.</p>
         <table id="constTable"></table>
         <p><strong>Frontline degradation (the "Frontline RF" toggle).</strong> A real sector adds error a clean model omits. Modelled here: array and aircraft-attitude bearing error (folded into the reported ellipse, so it stays honest); multipath fading that makes signal strength swing second to second; a near-far floor rise when the band is busy, which buries weak emitters; shadowing from our own airframe; and burst mis-association, where a burst is filed under the wrong nearby target and the convergence gate has to catch it. Turn it off to compare against the clean illustration.</p>
-        <p><strong>Still not modelled</strong>, and where field data would matter most: full deinterleaving at real spectral density (hundreds of overlapping emitters, not a handful); a validated hop fingerprint (the Stage-4 values are placeholders); 3D geolocation including emitter height; an adversary that changes frequency, bursts briefly, or runs silent; fibre-optic FPV drones (no RF at all); real coherent-array calibration and mutual coupling; weather and ducting; downlink bandwidth, endurance and survivability of the aircraft; and the absence of ground truth in the field (here the error-vs-truth is known only because the simulator placed the emitters).</p>
+        <p><strong>Still not modelled</strong>, and where field data would matter most: a validated hop fingerprint (the Stage-4 values are placeholders); 3D geolocation including emitter height; an adversary that changes frequency, bursts briefly, or runs silent; fibre-optic FPV drones (no RF at all); real coherent-array calibration and mutual coupling; weather and ducting; downlink bandwidth, endurance and survivability of the aircraft; and the absence of ground truth in the field (here the error-vs-truth is known only because the simulator placed the emitters).</p>
         <p>The constants sit at the top of the script, so field-test figures can replace them.</p>
       </details>
     </section>
@@ -405,6 +424,25 @@ const AIRFRAME_SECTOR_DEG = 70;     // relative-aspect width of the airframe-sha
 const ASSOC_P = 0.025;              // chance a burst is filed under the wrong nearby target (deinterleave error)
 const ASSOC_RANGE_M = 4000;         // only confuse targets within this range (nearby emitters, small angular bias)
 const REAL_RESID_DEG = 1.5;         // irreducible multipath bearing error even on strong bursts, deg
+
+// Deinterleaving: sorting a dense anonymous burst stream back into per-emitter tracks.
+const DEINT = {
+  ttlS: 25, freqTolMHz: 0.35, bwTolFrac: 0.5, hrTolFrac: 0.5, brgTolDeg: 12,
+  collideLossP: 0.5,       // a colliding burst is lost (else its bearing is garbled)
+  maxPop: 400,             // size of the pre-generated background population
+};
+const ISO_K = { isolated: 1, split: 1.7, merged: 2.6, lost: Infinity };   // fix-uncertainty inflation by isolation outcome
+// Infer an emitter class from a cluster's MEASURED features (no ground truth).
+function inferClass(c) {
+  const s = [0.12, 0.12, 0.12, 0.12];   // [ctrl, radio, jam, video]
+  if (c.hop) { if (c.hr >= 80 && c.hr <= 1200 && c.bw <= 4) s[0] += 3.2; else s[1] += 1.4; }
+  else if (c.bw >= 6 && c.maxSnr >= 42) s[2] += 3.2;
+  else if (c.bw >= 3.5) s[3] += 2.4;
+  else s[1] += 2.6;
+  if (c.fix && c.fix.moving) { s[3] += 2.2; s[0] *= 0.5; s[2] *= 0.4; }
+  const tot = s[0] + s[1] + s[2] + s[3];
+  return [s[0] / tot, s[1] / tot, s[2] / tot, s[3] / tot];
+}
 
 // Classification (signal fingerprint: band, hopping, cadence, bandwidth)
 const CLASS_PRIOR = { ctrl: 0.30, radio: 0.35, jam: 0.10, video: 0.25 };
@@ -726,6 +764,27 @@ function genWorld(seed, nEmit) {
       W.units.push({ side, x, y });
     }
   }
+  // --- background spectrum population: the dense clutter of a real sector
+  W.population = [];
+  const POP = [
+    { k: 'squad', w: 36, band: [35, 46, 52, 61, 73, 145, 155, 410, 446, 462], bw: 0.025, hop: false, intv: [5, 18], duty: 0.45, pwr: 34, label: 'squad radio' },
+    { k: 'cell',  w: 20, band: [811, 866, 942, 1845, 2115, 2650], bwR: [4, 18], hop: false, intv: [2, 7], duty: 0.75, pwr: 30, label: 'cellular / LTE' },
+    { k: 'link',  w: 10, band: [433, 868, 915, 1280, 2200], bwR: [0.5, 2], hop: true, hr: [150, 700], intv: [2, 6], duty: 0.6, pwr: 36, label: 'other control link' },
+    { k: 'wifi',  w: 14, band: [2412, 2437, 2462, 5200, 5805], bwR: [10, 40], hop: true, hr: [1800, 4000], intv: [1, 4], duty: 0.55, pwr: 26, label: 'Wi-Fi / Bluetooth' },
+    { k: 'bcast', w: 12, band: [91, 98, 103, 175, 600, 1550, 2020], bwR: [0.2, 8], hop: false, intv: [1, 3], duty: 0.9, pwr: 40, label: 'broadcast / satcom' },
+    { k: 'veh',   w: 8,  band: [155, 446, 862, 1300], bw: 0.1, hop: false, intv: [6, 20], duty: 0.3, pwr: 32, label: 'vehicle / mesh' },
+  ];
+  const totW = POP.reduce((a, pt) => a + pt.w, 0);
+  for (let i = 0; i < DEINT.maxPop; i++) {
+    let r = R.range(0, totW), pt = POP[0];
+    for (const q of POP) { if (r < q.w) { pt = q; break; } r -= q.w; }
+    let x, y;
+    if (R() < 0.5 && W.towns.length) { const tn = R.pick(W.towns); x = tn.x + R.norm() * 1500; y = tn.y + R.norm() * 1500; }
+    else { y = R.range(1000, MAP_H - 1000); x = W.front(y).e + R.range(-18000, 14000); }
+    W.population.push({ idx: i, k: pt.k, label: pt.label, x: clamp(x, 500, MAP_W - 500), y: clamp(y, 500, MAP_H - 500),
+      fMHz: pt.band[Math.floor(R() * pt.band.length)], bw: pt.bw != null ? pt.bw : R.range(pt.bwR[0], pt.bwR[1]),
+      hop: !!pt.hop, hopRate: pt.hop ? R.range(pt.hr[0], pt.hr[1]) : 0, intervalS: R.range(pt.intv[0], pt.intv[1]), duty: pt.duty, pwr: pt.pwr });
+  }
   return W;
 }
 
@@ -945,15 +1004,15 @@ function postView(post, fix) {
 // A transmitter is "located" only if it reaches Stage 5 (passed gates 1-4), has been held
 // across enough windows (persistence), and its bearings converge to a tight enough fix.
 function isLocated(tr, snap, p) {
-  if (!snap || tr.pstage !== 5) return false;
+  if (!snap || tr.pstage !== 5 || tr.iso === 'lost') return false;
   const f = snap.fix;
-  return (snap.windows || 0) >= p.persistWin && f && f.valid && !f.moving && f.a <= p.convTolM;
+  return (snap.windows || 0) >= p.persistWin && f && f.valid && !f.moving && f.a * (tr.iso ? ISO_K[tr.iso] : 1) <= p.convTolM;
 }
 
 /* ===================================================================== SIMULATION */
 function simulate(W, cfg, mode) {
-  cfg = Object.assign({ alt: 1, beam: BEAM_WIDTH_DEG, noise: 0, refl: true, realism: false, attDeg: 0, margin: PIPE.marginDb, persistWin: PIPE.persistWin, convTolM: PIPE.convTolM, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }, cfg);
-  const R = makeRng(W.seed + '|sim|' + mode);
+  cfg = Object.assign({ alt: 1, beam: BEAM_WIDTH_DEG, noise: 0, refl: true, realism: false, attDeg: 0, density: 150, margin: PIPE.marginDb, persistWin: PIPE.persistWin, convTolM: PIPE.convTolM, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }, cfg);
+  const R = makeRng(W.seed + '|sim|' + mode), Rp = makeRng(W.seed + '|pop|' + mode);
   const alt = ALTITUDES[cfg.alt].m, altZ = W.meanH + alt, bw = cfg.beam;
   const ems = W.emitters;
   const tracks = ems.map((e, i) => ({ i, e, b: [], snaps: [], post: CLASSES.map(c => CLASS_PRIOR[c]), nDet: 0, nMiss: 0, lobes: [0, 0, 0], firstT: -1, lastT: -1e9, maxSnr: -99, fix: null, done: false, ev: {}, lastLobe: null, reported: null, class90: false, movingSaid: false, wasTx: false, windows: 0, lastWin: -1, nRej4: 0, pstage: 5 }));
@@ -970,7 +1029,64 @@ function simulate(W, cfg, mode) {
   const oR = Math.max(ORBIT_R_MIN_M, alt * ORBIT_R_MULT);
   const next = ems.map(() => R.range(0, DWELL_S));
   let crossedF = false, crossedE = false, tEnd = MISSION_MAX_S;
-  say(0, `Launch at ${alt.toLocaleString('en-US')} m. Receiver scanning 30 MHz to 6 GHz. Steep zone radius about ${fmtM(alt)}.`);
+  const groundN = ems.filter(e => e.type !== 'video').length;
+  say(0, `Launch at ${alt.toLocaleString('en-US')} m. Sweeping ${(cfg.density + groundN)} emitters across the sector; every burst must be sorted before it can be located.`);
+
+  // ---------- deinterleaver (sorts the dense anonymous burst stream into tracks) ----------
+  const clusters = [], pop = W.population.slice(0, cfg.density), popNext = pop.map(pe => Rp.range(0, pe.intervalS));
+  let binCount = {};
+  const solveC = (c, t, force) => {
+    const n = c.b.length;
+    if (!force && n > 30 && n % (n > 150 ? 8 : n > 60 ? 4 : 2) !== 0) return;
+    c.fix = solveFix(c.b, n, alt, c.fix, force || c.snaps.length % 5 === 0);
+    c.post = inferClass(c); c.e.fMHz = c.f; c.e.fp = { hop: c.hop, hopRate: c.hr, burstMs: 3, burstBW: c.bw }; c.pstage = pipeStage(c.e, cfg);
+    c.snaps.push({ t, n, fix: c.fix, windows: c.windows });
+  };
+  const clusterIngest = (b) => {
+    const bn = Math.round(b.f); binCount[bn] = (binCount[bn] || 0) + 1;
+    // co-channel collision: rare per burst (bursts are milliseconds); a strong signal captures the channel
+    const capture = clamp((SNR_STRONG_DB - b.snr + 12) / 24, 0.08, 1);
+    const pcol = (1 - Math.exp(-0.06 * (binCount[bn] - 1))) * capture;
+    let kind = b.kind || 'ok';
+    if (pcol > 0 && Rp() < pcol) { if (Rp() < DEINT.collideLossP) return; b = Object.assign({}, b, { az: (b.az + Rp.range(-60, 60) + 360) % 360 }); kind = 'false'; }
+    let best = null, bestD = Infinity;
+    for (const c of clusters) {
+      if (b.hop !== c.hop) continue;
+      const located = c.fix && c.fix.valid, stale = b.t - c.lastT > DEINT.ttlS;
+      if (stale && !located) continue;
+      let fd;
+      if (b.hop) { if (Math.abs(b.bw - c.bw) > DEINT.bwTolFrac * Math.max(c.bw, 1) || Math.abs(b.hr - c.hr) > DEINT.hrTolFrac * Math.max(c.hr, 100)) continue; fd = Math.abs(b.hr - c.hr) / Math.max(c.hr, 100); }
+      else { if (Math.abs(b.f - c.f) > DEINT.freqTolMHz) continue; fd = Math.abs(b.f - c.f) / DEINT.freqTolMHz; }
+      const exp = located ? azOf(c.fix.x - b.x, c.fix.y - b.y) : c.lastAz;
+      const ad = Math.abs(angDiff(b.az, exp));
+      if (ad > DEINT.brgTolDeg) continue;
+      const d = fd + ad / DEINT.brgTolDeg + (stale ? 0.6 : 0);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    let c = best;
+    if (!c) { c = { i: clusters.length, b: [], snaps: [], nF: 0, sumF: 0, sumBw: 0, sumHr: 0, f: b.f, bw: b.bw, hop: b.hop, hr: b.hr, lastT: -1e9, lastAz: b.az, nDet: 0, maxSnr: -99, fix: null, windows: 0, lastWin: -1, post: [0.25, 0.25, 0.25, 0.25], pstage: 4, truthCounts: {}, e: { id: 'K' + (clusters.length + 1), fMHz: b.f, fp: {} } }; clusters.push(c); }
+    c.b.push({ t: b.t, x: b.x, y: b.y, az: b.az, sr: b.sr, ns: b.ns || NAV_GNSS_SIG_M, cs: b.cs || 0, kind, len: b.len || 8000, snr: b.snr });
+    c.nF++; c.sumF += b.f; c.sumBw += b.bw; c.sumHr += b.hr; c.f = c.sumF / c.nF; c.bw = c.sumBw / c.nF; if (c.hop) c.hr = c.sumHr / c.nF;
+    c.lastT = b.t; c.lastAz = b.az; c.nDet++; c.maxSnr = Math.max(c.maxSnr, b.snr);
+    c.truthCounts[b.truth] = (c.truthCounts[b.truth] || 0) + 1;
+    const wn = Math.floor(b.t / cfg.winS); if (wn !== c.lastWin) { c.lastWin = wn; c.windows++; }
+    solveC(c, b.t, false);
+  };
+  const popEmit = (pe, t, nX, nY, desens, congest) => {
+    const horiz = Math.hypot(px - pe.x, py - pe.y), slant = Math.hypot(horiz, alt), azTrue = azOf(pe.x - px, pe.y - py);
+    let degrade = 0;
+    if (cfg.realism) { degrade += FADE_DEPTH_DB * 0.25 * (Math.sin(t / 9 + pe.idx) + Math.sin(t / 23 + pe.idx * 0.7)); degrade -= congest * 0.5; degrade -= AIRFRAME_MASK_DB * smooth(180 - AIRFRAME_SECTOR_DEG, 180, Math.abs(angDiff(azTrue, hdg))); }
+    const snr = pe.pwr - 10 * PATHLOSS_EXP * Math.log10(Math.max(slant, 100) / 1000) - cfg.noise - desens * 0.6 + degrade;
+    F.raw++;
+    if (!cfg.bands.some(r => inW(pe.fMHz, r))) return; F.s1++;
+    if (cfg.selfNoise.some(r => inW(pe.fMHz, r))) return; F.s2++;
+    const pd = 1 / (1 + Math.exp(-(snr - DETECT_SNR_DB) / DETECT_SLOPE_DB));
+    if (snr < cfg.margin || Rp() >= pd) return; F.s3++;
+    if (pe.hop && inW(pe.hopRate, cfg.hopRate) && inW(pe.bw, cfg.burstBW)) F.s4++;
+    const sigR = Math.hypot(SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * clamp((SNR_STRONG_DB - snr) / (SNR_STRONG_DB - DETECT_SNR_DB), 0, 1), cfg.realism ? cfg.attDeg : 0, cfg.realism ? REAL_RESID_DEG : 0);
+    clusterIngest({ t, f: pe.hop ? pe.fMHz + Rp.range(-4, 4) : pe.fMHz, bw: pe.bw, snr, az: (azTrue + Rp.norm() * sigR + 360) % 360, hop: pe.hop, hr: pe.hopRate + (pe.hop ? Rp.norm() * pe.hopRate * 0.08 : 0), x: nX, y: nY, sr: sigR * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, len: clamp(horiz + 2000, 3000, 26000), truth: 'pop:' + pe.idx });
+  };
+  const clusterLoc = c => c.pstage === 5 && c.windows >= cfg.persistWin && c.fix && c.fix.valid && !c.fix.moving && c.fix.a <= cfg.convTolM;
 
   const solveTrack = (tr, t, force) => {
     const n = tr.b.length;
@@ -1060,6 +1176,7 @@ function simulate(W, cfg, mode) {
     }
     tr.b.push({ t, x: nX, y: nY, az: (az + 360) % 360, sr: sigReported * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, kind, len: clamp(len, 3000, 26000), snr });
     classifyBurst(R, tr, snr);
+    clusterIngest({ t, f: e.fMHz + ((e.fp && e.fp.hop) ? R.range(-3, 3) : 0), bw: e.fp ? e.fp.burstBW : (e.type === 'jam' ? 20 : e.type === 'video' ? 12 : e.type === 'radio' ? 0.025 : 1), snr, az: (az + 360) % 360, hop: !!(e.fp && e.fp.hop), hr: e.fp ? e.fp.hopRate : 0, x: nX, y: nY, sr: sigReported * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, len: clamp(len, 3000, 26000), truth: 'tgt:' + e.idx });
     // narration
     if (tr.firstT < 0) { tr.firstT = t; say(t, `New contact ${e.id}: ${e.sig}. Bearing ${fmtAz(az)}.`); }
     if (e.type === 'ctrl' && lobe !== tr.lastLobe && once(tr, 'lobe', t, 200)) {
@@ -1099,10 +1216,15 @@ function simulate(W, cfg, mode) {
     if (!crossedF && px > fr.f) { crossedF = true; say(t, 'Crossed our forward line (FLOT) into the grey zone.'); }
     if (!crossedE && px > fr.e) { crossedE = true; say(t, 'Crossed the enemy forward line (FLET). Over enemy territory.'); }
 
-    // --- intercepts
+    // --- intercepts: our designated targets (full fidelity) + the background population (dense clutter)
+    binCount = {};
     for (let i = 0; i < ems.length; i++) {
       while (next[i] <= t) { next[i] += DWELL_S * R.range(0.85, 1.15); intercept(tracks[i], t, nX, nY, desens, congest); }
     }
+    for (let i = 0; i < pop.length; i++) {
+      while (popNext[i] <= t) { popNext[i] += pop[i].intervalS * Rp.range(0.7, 1.3); if (Rp() < pop[i].duty) popEmit(pop[i], t, nX, nY, desens, congest); }
+    }
+    { const sn = Rp.int(10, 22); F.raw += sn; F.s1 += sn; }   // our platform's own emissions: heard, in band, blanked at Stage 2
 
     // --- Pinpoint mode: lock, orbit, report
     if (mode === 1) {
@@ -1136,13 +1258,10 @@ function simulate(W, cfg, mode) {
       }
     }
 
-    // classification pipeline funnel: sample once per window, with modelled background clutter
+    // classification pipeline funnel: the real dense stream, sampled once per window
     if (t >= nextWin) {
       nextWin += cfg.winS;
-      const oob = R.int(40, 90), self = R.int(20, 45), misc = R.int(15, 35);   // out-of-band / self-noise / in-band wrong-fingerprint
-      F.raw += oob + self + misc; F.s1 += self + misc; F.s2 += misc; F.s3 += Math.round(misc * 0.6);
-      let loc = 0;
-      for (const tr of tracks) if (tr.e.type !== 'video' && isLocated(tr, tr.snaps[tr.snaps.length - 1], cfg)) loc++;
+      let loc = 0; for (const c of clusters) if (clusterLoc(c)) loc++;
       series.push({ t, raw: F.raw, s1: F.s1, s2: F.s2, s3: F.s3, s4: F.s4, loc });
     }
 
@@ -1153,6 +1272,30 @@ function simulate(W, cfg, mode) {
     tEnd = t;
   }
   for (const tr of tracks) if (tr.b.length && (!tr.snaps.length || tr.snaps[tr.snaps.length - 1].n !== tr.b.length)) { tr.fix = solveFix(tr.b, tr.b.length, alt, tr.fix); tr.snaps.push({ t: tr.b[tr.b.length - 1].t, n: tr.b.length, fix: tr.fix, post: tr.post.slice(), nDet: tr.nDet, nMiss: tr.nMiss, lobes: tr.lobes.slice(), windows: tr.windows, rej4: tr.nRej4 }); }
+
+  // finalize clusters and score the deinterleaver against ground truth
+  for (const c of clusters) {
+    c.fix = solveFix(c.b, c.b.length, alt, c.fix, true); c.post = inferClass(c); c.e.fMHz = c.f; c.e.fp = { hop: c.hop, hopRate: c.hr, burstMs: 3, burstBW: c.bw }; c.pstage = pipeStage(c.e, cfg);
+    let top = 0, topKey = null, total = 0; for (const k in c.truthCounts) { total += c.truthCounts[k]; if (c.truthCounts[k] > top) { top = c.truthCounts[k]; topKey = k; } }
+    c.total = total; c.topKey = topKey;
+  }
+  const clByTgt = {};
+  for (const c of clusters) for (const k in c.truthCounts) if (k[0] === 't') { const ix = +k.slice(4); (clByTgt[ix] = clByTgt[ix] || []).push({ c, n: c.truthCounts[k] }); }
+  for (const tr of tracks) {
+    if (tr.e.type === 'video') continue;
+    const arr = clByTgt[tr.e.idx] || [], tot = arr.reduce((a, b) => a + b.n, 0);
+    if (tot < 4) { tr.iso = 'lost'; continue; }
+    arr.sort((a, b) => b.n - a.n);
+    const dom = arr[0], domPurity = dom.n / Math.max(dom.c.total, 1), big = arr.filter(x => x.n >= 0.3 * tot).length;
+    tr.iso = big >= 2 ? 'split' : domPurity < 0.6 ? 'merged' : 'isolated';
+  }
+  const argmaxP = c => { let bi = 0; for (let k = 1; k < 4; k++) if (c.post[k] > c.post[bi]) bi = k; return CLASSES[bi]; };
+  const popK = c => (c.topKey && c.topKey[0] === 'p') ? (pop[+c.topKey.slice(4)] || {}).k : null;
+  const locatedCl = clusters.filter(clusterLoc), isoV = tracks.filter(tr => tr.e.type !== 'video').map(tr => tr.iso);
+  const deint = { emitters: cfg.density + groundN, raw: F.raw, clusters: clusters.length, located: locatedCl.length,
+    isolated: isoV.filter(v => v === 'isolated').length, merged: isoV.filter(v => v === 'merged').length, split: isoV.filter(v => v === 'split').length, lost: isoV.filter(v => v === 'lost').length,
+    falseTracks: locatedCl.filter(c => popK(c) && popK(c) !== 'link' && argmaxP(c) === 'ctrl').length,
+    otherLinks: locatedCl.filter(c => popK(c) === 'link').length, targets: groundN };
 
   // --- summary
   const isLoc = tr => isLocated(tr, tr.snaps[tr.snaps.length - 1], cfg);
@@ -1170,7 +1313,7 @@ function simulate(W, cfg, mode) {
     if (phase === 'orbit' && target) rep.push(`${target.e.id} ±${fmtM(target.fix ? target.fix.a : NaN)} (still orbiting)`);
     say(tEnd, rep.length ? `Mission end. Pinpointed ${rep.join(', ')}. Everything else is from transit only.` : 'Mission end. No contact passed all five gates as a stationary control link, so no orbit was flown.', rep.length ? 'good' : 'warn');
   }
-  return { mode, tracks, path, misses, events, tEnd, alt, altZ, oR, wp, pipe: { series, params: { persistWin: cfg.persistWin, convTolM: cfg.convTolM, margin: cfg.margin, winS: cfg.winS, bands: cfg.bands, selfNoise: cfg.selfNoise, hopRate: cfg.hopRate, burstMs: cfg.burstMs, burstBW: cfg.burstBW } } };
+  return { mode, tracks, path, misses, events, tEnd, alt, altZ, oR, wp, deint, pipe: { series, params: { persistWin: cfg.persistWin, convTolM: cfg.convTolM, margin: cfg.margin, winS: cfg.winS, bands: cfg.bands, selfNoise: cfg.selfNoise, hopRate: cfg.hopRate, burstMs: cfg.burstMs, burstBW: cfg.burstBW } } };
 }
 
 /* ===================================================================== BASE MAP */
@@ -1267,7 +1410,7 @@ const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:
 
 const cvs = document.getElementById('map'), ctx = cvs.getContext('2d');
 const view = { cx: MAP_W / 2, cy: MAP_H / 2, s: 0.02, w: 800, h: 600, dpr: 1, fitted: false };
-const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM, realism: true, att: ATT_ERR_DEG };
+const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM, realism: true, att: ATT_ERR_DEG, density: 150 };
 const hlIdx = () => state.hover >= 0 ? state.hover : state.pin;
 let world = null, sims = null;
 
@@ -1435,20 +1578,21 @@ function draw(now) {
   for (const tr of sim.tracks) {
     const snap = snapAt(tr, t); if (!isLocated(tr, snap, sim.pipe.params)) continue;
     const pv = postView(snap.post, snap.fix);
-    const f = snap.fix, ex = X(f.x), ey = Y(f.y), col = TYPE_COL[pv.cls], isHov = hov === tr.i, dimmed = hov >= 0 && !isHov;
+    const K = tr.iso ? ISO_K[tr.iso] : 1, f = snap.fix, ex = X(f.x), ey = Y(f.y), col = TYPE_COL[pv.cls], isHov = hov === tr.i, dimmed = hov >= 0 && !isHov;
     ctx.globalAlpha = dimmed ? 0.3 : 1;
     if (state.truth) { const tp = emPos(world, tr.e, t); ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(X(tp.x), Y(tp.y)); ctx.setLineDash([1, 3]); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.stroke(); }
-    ctx.beginPath(); ctx.ellipse(ex, ey, Math.max(f.a * s, 1.5), Math.max(f.b * s, 1.5), f.ang, 0, 2 * Math.PI);
+    ctx.beginPath(); ctx.ellipse(ex, ey, Math.max(f.a * K * s, 1.5), Math.max(f.b * K * s, 1.5), f.ang, 0, 2 * Math.PI);
     ctx.fillStyle = rgba(col, 0.07); ctx.fill();
     ctx.setLineDash([5, 4]); ctx.strokeStyle = rgba(col, 0.95); ctx.lineWidth = isHov ? 2 : 1.4; ctx.stroke(); ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(ex - 5, ey - 5); ctx.lineTo(ex + 5, ey + 5); ctx.moveTo(ex + 5, ey - 5); ctx.lineTo(ex - 5, ey + 5);
     ctx.strokeStyle = rgba(COL.ground, 0.9); ctx.lineWidth = 4; ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8; ctx.stroke();
-    halo(`${tr.e.id} ±${fmtM(f.a)}`, ex + 9, ey + 10, '#ffffff', FONT_DATA);
+    halo(`${tr.e.id} ±${fmtM(f.a * K)}`, ex + 9, ey + 10, '#ffffff', FONT_DATA);
     ctx.globalAlpha = 1;
   }
 
   // emitters (ground truth)
   if (state.truth) {
+    if (s > 0.008 && world.population) { ctx.fillStyle = 'rgba(159,178,200,0.36)'; const nd = Math.min(state.density, world.population.length); for (let i = 0; i < nd; i++) { const pe = world.population[i]; ctx.fillRect(X(pe.x) - 0.8, Y(pe.y) - 0.8, 1.6, 1.6); } }
     const pulse = REDUCED ? 0.5 : (now / 1600) % 1;
     for (const e of ems) {
       if (e.type === 'video') continue;
@@ -1534,7 +1678,7 @@ function updateFunnel(sim, t) {
   let html = rows.map(([l, v]) => `<div class="fn"><span class="fl">${l}</span><span class="fbar"><i style="width:${Math.round(100 * v / maxv)}%"></i></span><span class="fv">${v.toLocaleString('en-US')}</span></div>`).join('');
   html += `<div class="fn out"><span class="fl">5 · Located</span><span class="fbar"><i style="width:${Math.min(100, e.loc ? 14 + e.loc * 14 : 3)}%"></i></span><span class="fv">${e.loc} tx</span></div>`;
   $('funnel').innerHTML = html;
-  $('pipeCap').textContent = `${e.raw.toLocaleString('en-US')} events heard → ${e.loc} located. Gates 1–4 count events; Gate 5 (direction finding) collapses the survivors into located transmitters. Fingerprint values are notional until set from a field recording.`;
+  $('pipeCap').textContent = `${e.raw.toLocaleString('en-US')} events heard → ${e.loc} located transmitters (targets and clutter). Gates 1–4 count bursts; Gate 5 (deinterleaving + direction finding) collapses the survivors into located transmitters.`;
 }
 
 function updatePanel() {
@@ -1567,12 +1711,12 @@ function updatePanel() {
     bf.innerHTML = `<p class="empty">No located transmitter yet. A fix needs fingerprint-matching bursts from two or more positions, held across ${PP.persistWin} windows.</p>`;
     $('bfNote').textContent = '';
   } else {
-    const { tr, pv, f, err, snap } = best, cls = pv.cls;
+    const { tr, pv, f, err, snap } = best, cls = pv.cls, K = tr.iso ? ISO_K[tr.iso] : 1;
     $('bfNote').textContent = state.tab === 1 && sim.path.tg[p.i] === tr.i ? 'locked target' : 'tightest located';
-    bf.innerHTML = `<div class="fixhead"><span class="chip ${tr.e.type}">${tr.e.id}</span><div><div class="fixclass">${TYPE_NAME[cls]} <span class="fixsub">${pct(pv.conf)}</span></div><div class="fixsub">${tr.e.sig}</div></div></div>
+    bf.innerHTML = `<div class="fixhead"><span class="chip ${tr.e.type}">${tr.e.id}</span><div><div class="fixclass">${TYPE_NAME[cls]} <span class="fixsub">${pct(pv.conf)}</span></div><div class="fixsub">${tr.e.sig}${tr.iso && tr.iso !== 'isolated' ? ' · <span style="color:var(--amber)">' + tr.iso + ' in clutter</span>' : ''}</div></div></div>
       <dl class="stats">
         <div><dt>Error vs truth</dt><dd>${fmtM(err)}</dd><small>known only in simulation</small></div>
-        <div><dt>Uncertainty 95%</dt><dd>±${fmtM(f.a)}</dd><small>ellipse ${fmtM(f.a)} × ${fmtM(f.b)}</small></div>
+        <div><dt>Uncertainty 95%</dt><dd>±${fmtM(f.a * K)}</dd><small>ellipse ${fmtM(f.a * K)} × ${fmtM(f.b * K)}</small></div>
         <div><dt>Bearings used</dt><dd>${f.nUsed}<span> / ${snap.n}</span></dd><small>${f.rej.length} rejected · ${snap.nMiss} bursts missed</small></div>
         <div><dt>${tr.e.type === 'ctrl' ? 'Heard via' : 'Pattern'}</dt><dd style="font-size:15px">${tr.e.type === 'ctrl' ? (snap.lobes[0] ? 'main beam' : snap.lobes[1] ? 'side lobe' : 'back lobe') : 'omni'}</dd><small>${tr.e.type === 'ctrl' ? lobeText(snap.lobes) : 'radiates all directions'}</small></div>
       </dl>`;
@@ -1589,16 +1733,19 @@ function updatePanel() {
   rows.forEach(r => {
     const { tr, pv, loc, f, err, snap, nB } = r;
     const wrong = state.truth && pv.conf > 0.6 && pv.cls !== tr.e.type && tr.e.type !== 'video';
+    const K = tr.iso ? ISO_K[tr.iso] : 1;
     let q, qc;
-    if (loc) { q = '±' + fmtM(f.a); qc = grade(f); }
+    if (loc) { q = '±' + fmtM(f.a * K); qc = grade({ a: f.a * K, b: f.b * K, valid: true, nUsed: f.nUsed }); }
+    else if (tr.iso === 'lost' && tr.pstage === 5) { q = 'lost'; qc = 'poor'; }
     else if (snap.fix && snap.fix.moving) { q = 'moving'; qc = 'poor'; }
     else if (tr.pstage === 5) { q = 'candidate'; qc = 'rough'; }
     else { q = 'rejected'; qc = 'poor'; }
-    const why = loc ? null
+    const why = loc ? (tr.iso && tr.iso !== 'isolated' ? tr.iso + ' with clutter · S5' : null)
+      : tr.iso === 'lost' && tr.pstage === 5 ? 'lost in clutter · S5'
       : tr.pstage === 2 ? 'self-noise · S2'
       : tr.pstage === 4 ? (tr.e.type === 'video' ? 'continuous carrier · S4' : tr.e.type === 'radio' ? 'not a hopper · S4' : 'wrong fingerprint · S4')
       : snap.fix && snap.fix.moving ? 'moving · S5'
-      : tr.pstage === 5 ? `building · S5 ${snap.windows || 0}/${PP.persistWin}` : null;
+      : tr.pstage === 5 ? ((snap.windows || 0) >= PP.persistWin ? 'rough fix · S5' : `building · S5 ${snap.windows || 0}/${PP.persistWin}`) : null;
     const meta = [`${nB} brg`, why, loc && f.rej.length ? `${f.rej.length} rej` : null, snap.nMiss ? `${snap.nMiss} missed` : null, state.truth && loc ? `err ${fmtM(err)}` : null].filter(Boolean).join(' · ');
     let el = rowEls.get(tr.i);
     if (!el) { el = document.createElement('button'); el.type = 'button'; el.className = 'contact'; el.dataset.i = tr.i; rowEls.set(tr.i, el); }
@@ -1612,6 +1759,16 @@ function updatePanel() {
   silentNote.textContent = silent.length && state.truth ? `Not heard: ${silent.map(e => e.id).join(', ')}` : '';
   box.appendChild(silentNote);
   updateFunnel(sim, t);
+  const D = sim.deint;
+  if (D) {
+    $('deintBox').innerHTML = `
+      <div class="dstat"><span>Emitters in sector</span><b>${D.emitters}</b></div>
+      <div class="dstat"><span>Bursts sorted</span><b>${D.raw.toLocaleString('en-US')}</b></div>
+      <div class="dstat"><span>Tracks formed</span><b>${D.clusters}</b></div>
+      <div class="dstat"><span>Located emitters</span><b>${D.located}</b></div>
+      <div class="dchips"><span class="dchip iso">${D.isolated} isolated</span>${D.merged ? `<span class="dchip mg">${D.merged} merged</span>` : ''}${D.split ? `<span class="dchip sp">${D.split} split</span>` : ''}${D.lost ? `<span class="dchip">${D.lost} lost</span>` : ''}<span class="dchip">of ${D.targets} targets</span></div>`;
+    $('deintCap').textContent = `${D.otherLinks} other control-link track${D.otherLinks === 1 ? '' : 's'} found (real emitters, not tasked)${D.falseTracks ? ` · ${D.falseTracks} false control-link track${D.falseTracks === 1 ? '' : 's'} from clutter` : ''}. Mission totals; the headline fixes above are the designated targets the deinterleaver could isolate.`;
+  }
 
   // log
   const n = upto(sim.events, t), evs = sim.events.slice(Math.max(0, n - 7), n).reverse();
@@ -1619,7 +1776,7 @@ function updatePanel() {
 }
 
 /* ===================================================================== UI WIRING */
-function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl, margin: state.margin, persistWin: state.persist, convTolM: state.convTol, realism: state.realism, attDeg: state.att, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }; }
+function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl, margin: state.margin, persistWin: state.persist, convTolM: state.convTol, realism: state.realism, attDeg: state.att, density: state.density, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }; }
 function rebuildSims(keep) {
   const frac = keep && sims ? state.t.map((t, i) => t / sims[i].tEnd) : [0, 0];
   sims = [simulate(world, cfg(), 0), simulate(world, cfg(), 1)];
@@ -1645,6 +1802,7 @@ function syncControls() {
   $('beam').value = state.beam; $('beamVal').textContent = state.beam + '°';
   $('noise').value = state.noise; $('noiseVal').textContent = '+' + state.noise + ' dB';
   $('refl').checked = state.refl; $('truth').checked = state.truth; $('clutter').checked = state.clutter;
+  $('density').value = state.density; $('densityVal').textContent = state.density + ' emitters';
   $('realism').checked = state.realism; $('att').value = state.att; $('att').disabled = !state.realism;
   $('attVal').textContent = state.realism ? '±' + state.att + '°' : 'off';
   $('realNote').textContent = state.realism ? 'On: multipath fading, our-airframe shadowing, near-far floor rise, and burst mis-association are modelled.' : 'Off: clean illustration — one clear path to each emitter.';
@@ -1710,6 +1868,7 @@ const onSlider = (id, key, rebuild) => $(id).addEventListener('input', e => {
 onSlider('nEmit', 'n', () => { const f = state.t.map((t, i) => t / sims[i].tEnd); rebuildWorld(); state.t = f.map((x, i) => x * sims[i].tEnd); });
 onSlider('beam', 'beam', () => rebuildSims(true));
 onSlider('noise', 'noise', () => rebuildSims(true));
+onSlider('density', 'density', () => rebuildSims(true));
 onSlider('margin', 'margin', () => rebuildSims(true));
 onSlider('persist', 'persist', () => rebuildSims(true));
 onSlider('convTol', 'convTol', () => rebuildSims(true));
