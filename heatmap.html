@@ -250,6 +250,52 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
 .rrow.loc { border-color: rgba(243,180,67,.45); }
 .rrow.miss { opacity: .72; }
 .rrow .rprob.good { color: var(--teal); } .rrow .rprob.warn { color: var(--amber); }
+
+/* ---------- target-type chips (match the on-map colours) ---------- */
+.chip.jam { background: #ff6b3d; } .chip.c2 { background: #b98bff; } .chip.relay { background: #36c6ff; }
+.tchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+.tchip { display: inline-flex; align-items: center; gap: 5px; font: 500 11.5px var(--font-data); color: var(--ink-dim); border: 1px solid var(--rule); border-radius: 999px; padding: 2px 9px 2px 7px; }
+.tchip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--tc); }
+.tchip b { color: var(--ink); font-weight: 600; }
+
+/* ---------- on-map per-type HUD ---------- */
+.typehud { position: absolute; left: 12px; bottom: 44px; min-width: 190px; padding: 9px 11px; background: rgba(8, 17, 30, .82); border: 1px solid var(--rule); border-radius: 7px; pointer-events: none; backdrop-filter: blur(2px); }
+.typehud .th-h { font: 700 10px var(--font-label); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 7px; }
+.typehud .th { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 8px; padding: 2px 0; }
+.typehud .sw { width: 11px; height: 11px; border-radius: 50%; }
+.typehud .tl { font: 600 12.5px var(--font-label); color: var(--ink); letter-spacing: .01em; }
+.typehud .tn { font: 600 13px var(--font-data); color: var(--ink); }
+.typehud .tn i { color: var(--ink-faint); font-style: normal; font-weight: 500; }
+
+/* ---------- Film mode: full-bleed reveal for screen recording ---------- */
+.film-on .top, .film-on .rail, .film-on .transport, .film-on .brief, .film-on .mapctl, .film-on .stamp, .film-on .proc-badge { display: none !important; }
+.film-on .app { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.film-on .mapcol { grid-column: 1; grid-row: 1; }
+.film-on .typehud { left: 26px; bottom: 26px; min-width: 240px; padding: 14px 16px; background: rgba(8, 17, 30, .9); }
+.film-on .typehud .th-h { font-size: 11px; margin-bottom: 9px; }
+.film-on .typehud .tl { font-size: 15px; }
+.film-on .typehud .tn { font-size: 16px; }
+.film-on .typehud .sw { width: 13px; height: 13px; }
+.film { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
+.film-title { position: absolute; top: 26px; left: 26px; font: 700 15px var(--font-label); letter-spacing: .14em; text-transform: uppercase; color: var(--amber); }
+.film-caption { position: absolute; top: 26px; right: 26px; max-width: 46%; text-align: right; font: 500 18px/1.4 var(--font-body); color: var(--ink); text-shadow: 0 2px 10px rgba(0,0,0,.8); }
+.film-caption b { color: #fff; font-weight: 700; }
+.film-stages { position: absolute; top: 96px; right: 26px; width: 340px; max-width: 48%; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.film-stages li { display: flex; flex-direction: column; padding: 8px 12px; border: 1px solid var(--rule); border-left: 3px solid var(--rule); border-radius: 6px; background: rgba(8, 17, 30, .72); transition: all .3s ease; }
+.film-stages li b { font: 600 13px var(--font-label); letter-spacing: .04em; color: var(--ink-dim); }
+.film-stages li span { font: 400 11.5px var(--font-data); color: var(--ink-faint); }
+.film-stages li.pending { opacity: .45; }
+.film-stages li.active { border-left-color: var(--amber); background: rgba(243,180,67,.14); }
+.film-stages li.active b { color: var(--amber); }
+.film-stages li.done { border-left-color: var(--teal); }
+.film-stages li.done b { color: var(--teal); }
+.film-stages li.done b::after { content: " ✓"; }
+.film-actions { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); display: flex; gap: 12px; pointer-events: auto; }
+.film-btn { font: 700 16px var(--font-label); letter-spacing: .04em; color: var(--ground); background: var(--amber); border: 0; border-radius: 8px; padding: 13px 26px; cursor: pointer; box-shadow: 0 6px 24px rgba(243,180,67,.4); animation: filmpulse 1.8s ease-in-out infinite; }
+.film-replay { font: 600 14px var(--font-label); color: var(--ink); background: rgba(18,33,56,.92); border: 1px solid var(--rule); border-radius: 8px; padding: 11px 20px; cursor: pointer; }
+@keyframes filmpulse { 0%,100% { transform: scale(1); box-shadow: 0 6px 24px rgba(243,180,67,.4); } 50% { transform: scale(1.04); box-shadow: 0 8px 32px rgba(243,180,67,.6); } }
+.film-exit { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); font: 500 12px var(--font-label); letter-spacing: .06em; color: var(--ink-dim); background: rgba(18,33,56,.7); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 12px; cursor: pointer; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) { .film-btn { animation: none; } }
 </style>
 </head>
 <body>
@@ -274,14 +320,27 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
     <div class="mapwrap" id="mapwrap">
       <canvas id="map" aria-label="Sector map with the heat map of likely transmitter locations"></canvas>
       <div class="brief" id="brief"><h2 id="briefTitle"></h2><p id="briefText"></p><div class="status" id="briefStatus"></div></div>
+      <div id="typeHud" class="typehud" hidden></div>
       <div id="procBadge" class="proc-badge" hidden>Processing recordings…</div>
       <div class="mapctl">
         <button class="btn" id="zin" type="button" aria-label="Zoom in">+</button>
         <button class="btn" id="zout" type="button" aria-label="Zoom out">&minus;</button>
         <button class="btn" id="fit" type="button">Fit</button>
         <button class="btn" id="follow" type="button" aria-pressed="false">Follow</button>
+        <button class="btn" id="filmBtn" type="button" title="Clean full-screen reveal for recording">Film</button>
       </div>
       <div class="stamp">Modelled estimates &middot; not real RF data</div>
+      <!-- Film mode: a clean full-bleed reveal for screen recording -->
+      <div id="filmOverlay" class="film" hidden>
+        <div class="film-title" id="filmTitle">RFlex · passive RF reconnaissance</div>
+        <div class="film-caption" id="filmCaption"></div>
+        <ol class="film-stages" id="filmStages"></ol>
+        <div class="film-actions">
+          <button class="film-btn" id="filmRun" type="button">▶&nbsp; Run the 5-stage filter</button>
+          <button class="film-replay" id="filmReplay" type="button" hidden>↺ Replay</button>
+        </div>
+        <button class="film-exit" id="filmExit" type="button" aria-label="Exit film mode">✕ Exit film</button>
+      </div>
     </div>
     <div class="transport">
       <button class="btn play" id="play" type="button"></button>
@@ -440,6 +499,11 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
         <p class="cmpnote" id="batchNote"></p>
       </section>
       <section>
+        <h2>By target type <small>same payload &amp; flights</small></h2>
+        <table class="cmptbl" id="typeTbl"></table>
+        <p class="cmpnote" id="typeTblNote"></p>
+      </section>
+      <section>
         <h2>What the numbers say</h2>
         <div id="cmpProse"></div>
       </section>
@@ -479,7 +543,7 @@ const bandsFor = ceil => PIPE.bands.filter(b => b[0] < ceil).concat(ceil >= 2400
 const MISSION_MAX_S = 3900;         // 65 min: out to the objective and back (RTB)
 
 // Link budget: SNR on boresight at 1 km slant range, before pattern and terrain losses
-const SNR_1KM_DB = { ctrl: 46, jam: 82, radio: 40, video: 34 };
+const SNR_1KM_DB = { ctrl: 46, jam: 82, radio: 40, video: 34, c2: 50, relay: 48 };
 const PATHLOSS_EXP = 2.6;           // ground-to-air propagation exponent
 const DETECT_SNR_DB = 6;            // SNR with 50% chance of catching a burst
 const DETECT_SLOPE_DB = 2;          // softness of the detection curve
@@ -598,9 +662,13 @@ function pipeStage(e, cfg) {
   if (!cfg.bands.some(r => inW(f, r))) return 1;          // outside watched bands
   if (cfg.selfNoise.some(r => inW(f, r))) return 2;       // on our own platform's frequency
   const fp = e.fp;
+  // Stage 4 is a LIBRARY of known high-value-target signatures, not one template. A burst is kept only
+  // if it matches one of them; the 100+ background emitters match none and are dropped here.
   const match = fp.hop && inW(fp.hopRate, cfg.hopRate) && inW(fp.burstMs, cfg.burstMs) && inW(fp.burstBW, cfg.burstBW);
-  const wideband = !fp.hop && e.type === 'jam';           // strong wideband interferer: kept
-  return (match || wideband) ? 5 : 4;                     // else rejected at the hop-fingerprint gate
+  const wideband = !fp.hop && e.type === 'jam';           // strong wideband interferer: unmistakable
+  const netCtrl = e.type === 'c2' && fp.net;              // structured net-control carrier (command post)
+  const duplex  = e.type === 'relay' && fp.duplex;        // continuous duplex repeater carrier (comms relay)
+  return (match || wideband || netCtrl || duplex) ? 5 : 4;  // else rejected at the signature gate
 }
 
 /* ===================================================================== */
@@ -653,7 +721,7 @@ function makeNoise(R) {
 /* ===================================================================== WORLD */
 const CELL = 50, GX = MAP_W / CELL, GY = MAP_H / CELL, FRONT_STEP = 250;
 const TOWN_NAMES = ['Alder', 'Brenmoor', 'Corvin', 'Dunholt', 'Eskvale', 'Fenwick', 'Garrow', 'Holmby', 'Ivershaw', 'Kestrel', 'Larchmont', 'Marrow', 'Northam', 'Oakhurst', 'Pellin', 'Redfern', 'Saltash', 'Tamsin', 'Ulverby', 'Wexley', 'Yarrow', 'Thornby'];
-const TYPE_NAME = { ctrl: 'Drone control link', radio: 'Tactical radio', jam: 'Jammer', video: 'UAV video link' };
+const TYPE_NAME = { ctrl: 'Drone control link', radio: 'Tactical radio', jam: 'Jammer', video: 'UAV video link', c2: 'Command post', relay: 'Comms relay' };
 const CLASSES = ['ctrl', 'radio', 'jam', 'video'];
 // When a burst is misread, which class it gets mistaken for
 const CONFUSE = {
@@ -663,7 +731,8 @@ const CONFUSE = {
   video: { ctrl: 0.6, radio: 0.2, jam: 0.2 },
 };
 
-function genWorld(seed, nEmit) {
+function genWorld(seed, nEmit, opts) {
+  opts = opts || {};
   const R = makeRng(seed + '|world');
   const nz = makeNoise(R);
   const o = Array.from({ length: 10 }, () => R.range(0, 1000));
@@ -853,7 +922,21 @@ function genWorld(seed, nEmit) {
     const f = R.int(30, 87);
     ems.push({ type: 'radio', x: p.x, y: p.y, idx: ems.length, fMHz: f, fp: { hop: false, burstBW: 0.025, cont: true }, pclass: 'ordinary', sig: `VHF ${f} MHz · 25 kHz voice · push-to-talk` });
   }
-  const counters = { ctrl: 0, jam: 0, radio: 0 }, prefix = { ctrl: 'C', jam: 'J', radio: 'R' };
+  // --- high-value comms nodes: opt-in via opts (the heat-map campaign asks for these; the live-tasking sim does not).
+  //     Command posts sit deep in the rear; comms relays sit forward of them, often on high ground. Both are
+  //     continuous emitters with a recognised signature, so they reach the signature gate while background chatter does not.
+  const nC2 = opts.c2 || 0, nRL = opts.relay || 0;
+  for (let i = 0; i < nC2; i++) {
+    const p = place(10000, 22000);
+    const f = R.pick([410, 450, 760, 820]);
+    ems.push({ type: 'c2', x: p.x, y: p.y, idx: ems.length, fMHz: f, fp: { hop: false, burstBW: R.range(0.2, 1.2), cont: true, net: true }, pclass: 'target', sig: `${f} MHz · net-control comms hub · continuous` });
+  }
+  for (let i = 0; i < nRL; i++) {
+    const p = place(5000, 15000);
+    const f = R.pick([460, 735, 820, 1265]);
+    ems.push({ type: 'relay', x: p.x, y: p.y, idx: ems.length, fMHz: f, fp: { hop: false, burstBW: R.range(0.1, 0.5), cont: true, duplex: true }, pclass: 'target', sig: `${f} MHz · duplex repeater · continuous carrier` });
+  }
+  const counters = { ctrl: 0, jam: 0, radio: 0, c2: 0, relay: 0 }, prefix = { ctrl: 'C', jam: 'J', radio: 'R', c2: 'K', relay: 'L' };
   for (const e of ems) { e.id = prefix[e.type] + (++counters[e.type]); e.z = hAt(e.x, e.y) + 4; }
   // each controller's drone carries a video downlink: an airborne emitter
   for (const c of ems.filter(e => e.type === 'ctrl')) {
@@ -1124,7 +1207,9 @@ function simulate(W, cfg, mode) {
   const rxt = RX_TIERS[cfg.rx] || RX_TIERS[0], dwell = rxt.revisitS, coherent = rxt.coherent !== false; cfg.bands = bandsFor(rxt.ceil);
   const R = makeRng(W.seed + '|sim|' + mode), Rp = makeRng(W.seed + '|pop|' + mode);
   const alt = cfg.altM || ALTITUDES[cfg.alt].m, altZ = W.meanH + alt, bw = cfg.beam;   // altM: comparison hook (heat-map page), any altitude in metres
-  const ems = W.emitters;
+  // The live-tasking sim models operators/jammers/radios/video only; the heat-map campaign may add command
+  // posts and relays to the world, so skip those here (keeps the reference comparison apples-to-apples).
+  const ems = W.emitters.filter(e => e.type !== 'c2' && e.type !== 'relay');
   const tracks = ems.map((e, i) => ({ i, e, b: [], snaps: [], post: CLASSES.map(c => CLASS_PRIOR[c]), nDet: 0, nMiss: 0, lobes: [0, 0, 0], firstT: -1, lastT: -1e9, maxSnr: -99, fix: null, done: false, ev: {}, lastLobe: null, reported: null, class90: false, movingSaid: false, wasTx: false, windows: 0, lastWin: -1, nRej4: 0, pstage: 5 }));
   for (const tr of tracks) tr.pstage = pipeStage(tr.e, cfg);
   const path = { t: [], x: [], y: [], h: [], nx: [], ny: [], ph: [], ocx: [], ocy: [], tg: [], lap: [] };
@@ -1535,7 +1620,10 @@ const rootStyle = getComputedStyle(document.documentElement);
 function cssVar(name) { return rootStyle.getPropertyValue(name).trim(); }
 const COL = { ground: cssVar('--ground'), panel: cssVar('--panel'), ink: cssVar('--ink'), dim: cssVar('--ink-dim'), teal: cssVar('--teal'), amber: cssVar('--amber'), red: cssVar('--red'), purple: cssVar('--purple'), slate: cssVar('--slate') };
 function rgba(hex, a) { const n = parseInt(hex.replace('#', ''), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
-const TYPE_COL = { ctrl: COL.amber, jam: COL.purple, radio: COL.slate, video: COL.red };
+const TYPE_COL = { ctrl: COL.amber, jam: '#ff6b3d', c2: '#b98bff', relay: '#36c6ff', radio: COL.slate, video: COL.red };
+// Display names + short tags for the four high-value-target types the heat map classifies and locates.
+const HVT_LABEL = { ctrl: 'Drone operator', jam: 'Jammer (EW)', c2: 'Command post', relay: 'Comms relay' };
+const HVT_TAG = { ctrl: 'UAS', jam: 'EW', c2: 'C2', relay: 'COMMS' };
 const KIND_COL = { strong: COL.teal, weak: COL.slate, false: COL.red, steep: COL.slate };
 const FONT_LABEL = '600 11.5px "Barlow Semi Condensed", "Arial Narrow", sans-serif';
 const FONT_DATA = '500 10.5px "IBM Plex Mono", ui-monospace, monospace';
@@ -1695,7 +1783,7 @@ function makeEpochs(W, cfg, nF) {
     epochs.push(epochs[k - 1].map(p => {
       const e = p.src; let x = p.x, y = p.y, moved = 0, gen = p.gen, retuned = false;
       const rMove = R(), rRet = R(), rA = R(), rD = R();
-      if (e.type !== 'jam' && rMove < cfg.moveP) {
+      if (e.type !== 'jam' && e.type !== 'c2' && e.type !== 'relay' && rMove < cfg.moveP) {
         const R2 = makeRng(W.seed + '|move|' + k + '|' + e.idx);
         for (let tries = 0; tries < 80; tries++) {
           const d = lerp(MOVE_MIN_M, MOVE_MAX_M, tries ? R2() : rD), a = 2 * Math.PI * (tries ? R2() : rA);
@@ -1716,9 +1804,12 @@ function makeEpochs(W, cfg, nF) {
 }
 function txOn(W, q, t, k) {
   if (q.type === 'ctrl') return uavPos(q, t).on;
-  if (q.type === 'jam') return true;
+  if (q.type === 'jam' || q.type === 'c2' || q.type === 'relay') return true;   // continuous emitters
   return hash01(W.seedNum ^ (q.idx * 7919 + Math.floor((t + k * 100000) / DWELL_S) * 104729)) < RADIO_DUTY;
 }
+// The high-value-target types this campaign classifies and locates: operators, jammers, command posts, relays.
+const HVT = ['ctrl', 'jam', 'c2', 'relay'];
+const isHVT = t => HVT.indexOf(t) >= 0;
 // Other links in the background spectrum that share a target's band and fingerprint
 function findConfusers(W, cfg, E) {
   const out = [];
@@ -2062,7 +2153,7 @@ function pickNextPlan(W, ctx, used) {
   // the roughest control-link belief so far is the thing worth covering next
   let want = null, worst = -1;
   for (const tr of ctx.tracks.values()) {
-    if (tr.type !== 'ctrl' || !tr.lastFix) continue;
+    if (!isHVT(tr.type) || !tr.lastFix) continue;
     const score = (tr.lastFix.mainMass < MAIN_MASS_OK ? 2 : 0) + tr.lastFix.el.a / 1000 + (tr.lastFix.ghost ? 1.5 : 0);
     if (score > worst) { worst = score; want = tr.lastFix; }
   }
@@ -2098,19 +2189,22 @@ function capBins(bins) {
 /* ---------- aggregate belief grid for the heat display ---------- */
 function beliefGrid(W, cfg, ctx, uptoFlight) {
   const grid = new Float32Array(GCN), mem = MEMORY[cfg.memory].w;
+  // one grid per target type, so the heat can be coloured by what it is (before/after classification)
+  const grids = { ctrl: new Float32Array(GCN), jam: new Float32Array(GCN), c2: new Float32Array(GCN), relay: new Float32Array(GCN) };
   const perEmit = [];
   for (const tr of ctx.tracks.values()) {
-    if (tr.type !== 'ctrl' || !tr.bins.length) continue;
+    if (!isHVT(tr.type) || !tr.bins.length) continue;
     let bins = tr.bins.filter(b => b.k <= uptoFlight).map(b => Object.assign({}, b, { w: mem(uptoFlight - b.k) })).filter(b => b.w > 0.01);
     if (bins.length < 4) continue;
     bins = capBins(bins);
     const sol = solveEmitter(W, cfg, tr, bins);
     tr.lastFix = sol; sol.bins = bins.length; sol.nB = bins.length;
-    // add this emitter's normalised belief onto the aggregate grid (max, so peaks stay crisp)
-    for (let k = 0; k < grid.length; k++) { const p = sol.coarse.prob[k] / sol.coarse.norm; if (p > grid[k]) grid[k] = p; }
+    // add this emitter's normalised belief onto the aggregate grid AND its per-type grid (max, so peaks stay crisp)
+    const g = grids[tr.type];
+    for (let k = 0; k < grid.length; k++) { const p = sol.coarse.prob[k] / sol.coarse.norm; if (p > grid[k]) grid[k] = p; if (g && p > g[k]) g[k] = p; }
     perEmit.push({ tr, sol });
   }
-  return { grid, perEmit };
+  return { grid, grids, perEmit };
 }
 
 // Extra routes used when the flight-count slider asks for more flights than the plan defines.
@@ -2140,35 +2234,43 @@ function runCampaign(W, cfg) {
     for (const { tr, sol } of bel.perEmit) {
       const q = ctx.epochs[k][tr.idx];
       const truth = (tr.gen === q.gen) ? { x: q.x, y: q.y } : null;    // only current-generation tracks have a live truth
-      const pv = postView(tr.post, { moving: false });
+      // Classification: operators go through the fingerprint posterior (confusable with other hoppers); the
+      // jammer / command-post / relay signatures are distinctive, so they classify confidently once held.
+      let cls, conf, classed;
+      if (tr.type === 'ctrl') { const pv = postView(tr.post, { moving: false }); cls = pv.cls; conf = pv.conf; classed = pv.cls === 'ctrl' && pv.conf >= 0.6; }
+      else { cls = tr.type; conf = clamp(0.58 + 0.09 * Math.min(tr.nDet, 4) + (tr.maxSnr > SNR_STRONG_DB ? 0.06 : 0), 0, 0.99); classed = tr.pstage === 5 && tr.nDet >= 3; }
+      const pv = { cls, conf };
       const err = truth ? Math.hypot(sol.pkx - truth.x, sol.pky - truth.y) : NaN;
       const enoughGeom = sol.nHdg >= 2 && sol.nPos >= 3;
-      const classed = pv.cls === 'ctrl' && pv.conf >= 0.6;
       // "reportable": a genuine fix (classified, enough geometry, unimodal, no surviving mirror). Honesty of
       // the 95% ellipse is judged over ALL reportable fixes, so the ±X km "located" bar does not bias it by
       // keeping only the tight (overconfident) ones. "located" is the reportable subset tight enough to act on.
       const reportable = tr.pstage === 5 && classed && enoughGeom && sol.mainMass >= MAIN_MASS_OK && !sol.ghost && !!truth;
       const located = reportable && sol.el.a <= cfg.convTolM;
-      report.push({ id: tr.id, idx: tr.idx, gen: tr.gen, type: tr.type, pv, el: sol.el, pk: { x: sol.pkx, y: sol.pky },
+      const brokeMsg = tr.type === 'ctrl' ? 'track broke: operator changed link settings' : 'track broke: signal changed';
+      report.push({ id: tr.id, idx: tr.idx, gen: tr.gen, type: tr.type, cls, conf, pv, el: sol.el, pk: { x: sol.pkx, y: sol.pky },
         mainMass: sol.mainMass, ghost: sol.ghost, nHdg: sol.nHdg, nPos: sol.nPos, nB: sol.nB, located, reportable, err, truth,
         pstage: tr.pstage, moved: q.moved, retuned: q.retuned, confusers: [...new Set(tr.cc)].length,
-        why: !truth ? 'track broke: operator changed link settings' : !classed ? 'not yet a confident control link' : !enoughGeom ? `needs more angles (${sol.nHdg} headings, ${sol.nPos} spots)` : sol.ghost ? 'two candidate spots: side ambiguity not resolved' : sol.mainMass < MAIN_MASS_OK ? 'belief too spread out' : sol.el.a > cfg.convTolM ? 'fix not tight enough' : null });
+        why: !truth ? brokeMsg : !classed ? `not yet a confident ${TYPE_NAME[tr.type].toLowerCase()}` : !enoughGeom ? `needs more angles (${sol.nHdg} headings, ${sol.nPos} spots)` : sol.ghost ? 'two candidate spots: side ambiguity not resolved' : sol.mainMass < MAIN_MASS_OK ? 'belief too spread out' : sol.el.a > cfg.convTolM ? 'fix not tight enough' : null });
     }
     report.sort((a, b) => (b.located - a.located) || (a.el.a - b.el.a));
-    perFlight.push({ belief: bel.grid, report, flightIdx: k });
+    perFlight.push({ belief: bel.grid, grids: bel.grids, report, flightIdx: k });
   }
-  // final totals
-  const targets = W.emitters.filter(e => e.type === 'ctrl').length;
+  // final totals — combined over every target type, plus a per-type breakdown. Honesty (inside-95%) is
+  // measured over ALL reportable fixes, not only the tight "located" ones, so the gate does not bias it.
   const last = perFlight[nF - 1].report;
-  const locatedIds = last.filter(r => r.located && r.type === 'ctrl');
-  const reportable = last.filter(r => r.reportable && r.type === 'ctrl' && r.truth);
-  const errs = locatedIds.map(r => r.err).filter(isFinite);
-  // honesty over ALL reportable fixes (not only the tight "located" ones), so the gate does not bias it
-  const inside = reportable.filter(r => Math.hypot(r.pk.x - r.truth.x, r.pk.y - r.truth.y) <= r.el.a).length;
-  const summary = { targets, located: locatedIds.length, ghosts: last.filter(r => r.ghost && r.type === 'ctrl' && !r.located).length,
-    medErr: errs.length ? errs.slice().sort((a, b) => a - b)[errs.length >> 1] : NaN,
-    inside, nReportable: reportable.length, nLoc: locatedIds.length,
-    bursts: flights.reduce((a, f) => a + f.F.stored, 0), nF, totalLen: flights.reduce((a, f) => a + f.len, 0) };
+  const med = a => { a = a.filter(isFinite).sort((x, y) => x - y); return a.length ? a[a.length >> 1] : NaN; };
+  const agg = pred => {
+    const loc = last.filter(r => r.located && pred(r));
+    const rep = last.filter(r => r.reportable && pred(r) && r.truth);
+    const inside = rep.filter(r => Math.hypot(r.pk.x - r.truth.x, r.pk.y - r.truth.y) <= r.el.a).length;
+    return { targets: W.emitters.filter(e => pred({ type: e.type })).length, located: loc.length, nLoc: loc.length,
+      reportable: rep.length, nReportable: rep.length, inside,
+      ghosts: last.filter(r => r.ghost && pred(r) && !r.located).length, medErr: med(loc.map(r => r.err)) };
+  };
+  const byType = {}; for (const ty of HVT) byType[ty] = agg(r => r.type === ty);
+  const summary = Object.assign(agg(r => isHVT(r.type)), { byType,
+    bursts: flights.reduce((a, f) => a + f.F.stored, 0), nF, totalLen: flights.reduce((a, f) => a + f.len, 0) });
   return { flights, perFlight, ctx, summary, cfg: Object.assign({}, cfg), nF };
 }
 
@@ -2190,75 +2292,107 @@ window.BATCH = {
   },
   {
    "name": "Heat map · bladeRF + array fused · grid",
-   "loc": "36/75",
-   "inside": 81,
-   "err": "427 m",
+   "loc": "40/75",
+   "inside": 77,
+   "err": "468 m",
    "ghost": 14
   },
   {
    "name": "Heat map · coherent array · grid (no arc)",
-   "loc": "30/75",
-   "inside": 82,
-   "err": "667 m",
-   "ghost": 17
+   "loc": "29/75",
+   "inside": 79,
+   "err": "370 m",
+   "ghost": 15
   },
   {
    "name": "Heat map · bearings · grid",
-   "loc": "33/75",
-   "inside": 88,
-   "err": "601 m",
-   "ghost": 16
+   "loc": "38/75",
+   "inside": 86,
+   "err": "746 m",
+   "ghost": 19
   },
   {
    "name": "Heat map · combined · grid",
    "loc": "31/75",
-   "inside": 81,
-   "err": "735 m",
-   "ghost": 19
+   "inside": 78,
+   "err": "587 m",
+   "ghost": 21
   },
   {
    "name": "Heat map · combined · multi-angle",
-   "loc": "33/75",
+   "loc": "36/75",
    "inside": 93,
-   "err": "603 m",
-   "ghost": 25
-  },
-  {
-   "name": "Heat map · combined · plan between flights",
-   "loc": "39/75",
-   "inside": 75,
-   "err": "629 m",
-   "ghost": 17
-  },
-  {
-   "name": "Heat map · strength only · aimed enemy",
-   "loc": "4/75",
-   "inside": 64,
-   "err": "4948 m",
-   "ghost": 27
-  },
-  {
-   "name": "Heat map · strength only · omni enemy",
-   "loc": "20/75",
-   "inside": 78,
-   "err": "1865 m",
+   "err": "469 m",
    "ghost": 23
   },
   {
+   "name": "Heat map · combined · plan between flights",
+   "loc": "35/75",
+   "inside": 81,
+   "err": "573 m",
+   "ghost": 24
+  },
+  {
+   "name": "Heat map · strength only · aimed enemy",
+   "loc": "5/75",
+   "inside": 38,
+   "err": "5601 m",
+   "ghost": 30
+  },
+  {
+   "name": "Heat map · strength only · omni enemy",
+   "loc": "21/75",
+   "inside": 84,
+   "err": "1199 m",
+   "ghost": 17
+  },
+  {
    "name": "Heat map · combined · single pass",
-   "loc": "12/75",
-   "inside": 100,
-   "err": "332 m",
-   "ghost": 28
+   "loc": "13/75",
+   "inside": 96,
+   "err": "297 m",
+   "ghost": 24
   }
  ],
- "note": "8 maps × 3 altitudes, Frontline RF on, teams relocating. Every row runs the same 5-stage filter (band · self-noise · floor · hop fingerprint · convergence) and counts CONTROL LINKS only. \"Located\" means pinned to within ±4 km across the campaign; the live-tasking rows are per-mission fixes. Inside-95% is over all genuine fixes, so the located bar does not flatter it. All numbers are modelled, not field results.",
+ "note": "8 maps × 3 altitudes, Frontline RF on, teams relocating. These rows count CONTROL LINKS only, so the receiver/arc/plan comparison stays apples-to-apples with the live-tasking sim. Every row runs the same 5-stage filter (band · self-noise · floor · signature · convergence). \"Located\" means pinned to within ±4 km across the campaign; the live-tasking rows are per-mission fixes. Inside-95% is over all genuine fixes, so the located bar does not flatter it. All numbers are modelled, not field results.",
+ "typeRows": [
+  {
+   "name": "Drone operators (UAS)",
+   "loc": "31/75",
+   "inside": 78,
+   "err": "587 m",
+   "ghost": 21
+  },
+  {
+   "name": "Jammers (EW)",
+   "loc": "15/24",
+   "inside": 100,
+   "err": "225 m",
+   "ghost": 0
+  },
+  {
+   "name": "Command posts (C2)",
+   "loc": "33/48",
+   "inside": 100,
+   "err": "296 m",
+   "ghost": 0
+  },
+  {
+   "name": "Comms relays (COMMS)",
+   "loc": "48/48",
+   "inside": 100,
+   "err": "306 m",
+   "ghost": 0
+  }
+ ],
+ "typeNote": "Same payload (bladeRF · combined · crossing grid), same 8 maps × 3 altitudes, same 5-stage filter — broken out by target type. Continuous high-power emitters (jammers, command posts, relays) are easier and tighter than the bursty, aimed, relocating drone operators, so their fixes are reliable and their 95% ellipses conservative. GNSS spoofers are deliberately not modelled here.",
  "prose": [
-  "Decomposed with the filter identical on every row, the live-tasking sim's edge splits two ways. Band: a wideband array (hears 2.4 GHz) locates 72 control links with the arc; the same-band KrakenSDR locates 48. Arc: give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops from 48 at 365 m to 30/75 at 667 m. Both cost you real targets — neither is the whole story, and recording-then-mapping on fixed lines is the larger single loss.",
-  "Held to the same crossing-grid flights, the array and the bladeRF come out close (30/75 at 667 m vs 33/75 at 601 m). The array has fewer ghosts — five channels give a true azimuth with no mirror — but it is not tighter here, because of its ~3× slower sweep (far fewer bursts per fix) and it is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears. The array's no-mirror edge pays off on single or parallel plans, where crossing headings are missing and the bladeRF cannot resolve its mirror.",
-  "Flying both receivers fused beats either alone: 36/75 located at 427 m, fewer ghosts than either. Each emitter goes to the receiver good at it — the Kraken takes the ≤1.77 GHz control links (clean azimuth, no mirror, tight), the bladeRF takes the 2.4 GHz operators the Kraken cannot hear. It nearly matches a single Kraken flown with the 180° arc, without needing in-air tasking — the cost is SWaP: two receivers (~$1.4k, ~490 g) on a small airframe.",
-  "Strength alone is the warning: against aimed antennas it locates 4/75, and the few fixes it makes are wrong. Give the enemy stock omni antennas and the same method locates 20/75 at 78% inside. That gap is the case for the second channel.",
-  "Flying more angles beats flying more lines: multi-angle (33/75) and planning each route between flights (39/75) both beat a single pass (12/75), because crossing headings are what resolve the bearing's left/right mirror — and the cheap bladeRF leans on that hardest."
+  "Decomposed with the filter identical on every row, the live-tasking sim's edge splits two ways. Band: a wideband array (hears 2.4 GHz) locates 72 control links with the arc; the same-band KrakenSDR locates 48. Arc: give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops from 48 at 365 m to 29/75 at 370 m. Both cost you real targets — neither is the whole story, and recording-then-mapping on fixed lines is the larger single loss.",
+  "Held to the same crossing-grid flights, the array and the bladeRF come out close (29/75 at 370 m vs 38/75 at 746 m). The array has fewer ghosts — five channels give a true azimuth with no mirror — but its tighter bearings are offset by a ~3× slower sweep (far fewer bursts per fix) and it is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears. The array's no-mirror edge pays off on single or parallel plans, where crossing headings are missing and the bladeRF cannot resolve its mirror.",
+  "Flying both receivers fused beats either alone: 40/75 located at 468 m, fewer ghosts than either. Each emitter goes to the receiver good at it — the Kraken takes the ≤1.77 GHz control links (clean azimuth, no mirror, tight), the bladeRF takes the 2.4 GHz operators the Kraken cannot hear. It nearly matches a single Kraken flown with the 180° arc, without needing in-air tasking — the cost is SWaP: two receivers (~$1.4k, ~490 g) on a small airframe.",
+  "Strength alone is the warning: against aimed antennas it locates 5/75, and the few fixes it makes are wrong. Give the enemy stock omni antennas and the same method locates 21/75 at 84% inside. That gap is the case for the second channel.",
+  "Flying more angles beats flying more lines: multi-angle (36/75) and planning each route between flights (35/75) both beat a single pass (13/75), because crossing headings are what resolve the bearing's left/right mirror — and the cheap bladeRF leans on that hardest.",
+  "The same payload picks up more than operators. Across target types, jammers (15/24), command posts (33/48) and comms relays (48/48) locate more reliably than the operators themselves (31/75) — they transmit continuously from fixed points, so the bearings converge and no left/right mirror survives. Operators are the hard case; the rest are the easy win."
  ]
 };
 /* ===================================================================== HEAT-MAP UI */
@@ -2271,7 +2405,12 @@ const state = {
   memory: 'all', omni: false, moveP: 35, density: 150, realism: true, truth: true,
   showPaths: true, showCover: false, showNaive: false, showGhost: true, showSpectrum: true,
   playing: !REDUCED, speed: 160, t: 0, hover: -1, pin: -1, follow: false,
+  classified: true,                        // colour the heat + fixes by target type (off = one undifferentiated heat)
+  film: false, filmPhase: 'raw', filmProg: 0, filterStage: 0,   // Film mode: raw heat -> run filters -> classified bloom
 };
+// HVT (the four located target types) is declared in campaign.js and shared across the concatenated script.
+// How far the raw->classified reveal has run: 1 = fully classified (normal use), animated in Film mode.
+function revealProg() { return state.film ? state.filmProg : (state.classified ? 1 : 0); }
 let world = null, camp = null, timeline = null, cmpOldSim = null;
 
 /* ---------- build config + run ---------- */
@@ -2303,7 +2442,7 @@ function rebuild(keepT) {
 }
 function rebuildWorld() {
   state.pin = -1; state.hover = -1;
-  world = genWorld(state.seed, 6);
+  world = genWorld(state.seed, 6, { c2: 2, relay: 2 });
   world.base = renderBase(world);
   cmpOldSim = null;
   rebuild(false);
@@ -2322,6 +2461,21 @@ function heatCanvas(grid) {
     d[i * 4] = col[0]; d[i * 4 + 1] = col[1]; d[i * 4 + 2] = col[2]; d[i * 4 + 3] = Math.round(clamp(u * 235, 0, 235));
   }
   c.getContext('2d').putImageData(img, 0, 0); return c;
+}
+// Per-type heat: one grid tinted with the target type's colour, brightening to near-white at the hot peak
+// so a located fix reads clearly. Used in classified mode; several are composited, one per type.
+function heatTypeCanvas(grid, hex, amax) {
+  let mx = 0; for (const v of grid) if (v > mx) mx = v; if (mx <= 0) return null;
+  const n = parseInt(hex.replace('#', ''), 16), R = n >> 16 & 255, G = n >> 8 & 255, B = n & 255;
+  const c = document.createElement('canvas'); c.width = GCX; c.height = GCY;
+  const g = c.getContext('2d'), img = g.createImageData(GCX, GCY), d = img.data;
+  for (let i = 0; i < grid.length; i++) {
+    const u = Math.pow(grid[i] / mx, HEAT_GAMMA); if (u <= 0.02) continue;
+    const w = u * u * 0.65;
+    d[i * 4] = Math.round(lerp(R, 255, w)); d[i * 4 + 1] = Math.round(lerp(G, 255, w)); d[i * 4 + 2] = Math.round(lerp(B, 255, w));
+    d[i * 4 + 3] = Math.round(clamp(u * amax, 0, amax));
+  }
+  g.putImageData(img, 0, 0); return c;
 }
 function coverCanvas(grid, hex, amax) {
   let mx = 0; for (const v of grid) if (v > mx) mx = v; if (mx <= 0) return null;
@@ -2365,7 +2519,12 @@ function draw(now) {
 
   // --- heat / coverage / raw layers
   const hi = heatIdxFor(seg);
-  if (!state.showNaive && hi >= 0) { const hc = heatCanvas(camp.perFlight[hi].belief); if (hc) ctx.drawImage(hc, X(0), Y(0), MAP_W * s, MAP_H * s); }
+  const prog = revealProg();        // 0 = one undifferentiated heat, 1 = split into coloured per-type heat
+  if (!state.showNaive && hi >= 0) {
+    const pf = camp.perFlight[hi];
+    if (prog < 1) { const hc = heatCanvas(pf.belief); if (hc) { ctx.globalAlpha = 1 - prog; ctx.drawImage(hc, X(0), Y(0), MAP_W * s, MAP_H * s); ctx.globalAlpha = 1; } }
+    if (prog > 0 && pf.grids) for (const ty of HVT) { const hc = heatTypeCanvas(pf.grids[ty], TYPE_COL[ty], 210); if (hc) { ctx.globalAlpha = prog; ctx.drawImage(hc, X(0), Y(0), MAP_W * s, MAP_H * s); ctx.globalAlpha = 1; } }
+  }
   const fl = camp.flights[seg.k];
   if (seg.kind === 'fly') {
     const sn = snapOf(fl, state.t - seg.t0);
@@ -2404,14 +2563,17 @@ function draw(now) {
     ctx.strokeStyle = active ? rgba(COL.teal, 0.8) : rgba(COL.slate, 0.3); ctx.lineWidth = active ? 1.8 : 1.1; ctx.stroke();
   });
 
-  // background spectrum: the dense clutter of other emitters the sorter must cut through
-  if (state.showSpectrum && world.population && s > 0.006) {
-    const nd = Math.min(state.density, world.population.length);
+  // background spectrum: the dense clutter of other emitters the sorter must cut through.
+  // In the reveal it fades out as the filters run — the "most signals are noise" collapse.
+  if (state.showSpectrum && world.population && s > 0.006 && prog < 1) {
+    const nd = Math.min(state.density, world.population.length), fade = 1 - prog;
+    ctx.globalAlpha = fade;
     for (let i = 0; i < nd; i++) {
       const pe = world.population[i];
       ctx.fillStyle = pe.k === 'link' ? rgba(COL.amber, 0.5) : pe.k === 'wifi' ? rgba(COL.purple, 0.42) : rgba(COL.slate, 0.4);
       ctx.fillRect(X(pe.x) - 1, Y(pe.y) - 1, 2, 2);
     }
+    ctx.globalAlpha = 1;
   }
 
   // ground truth emitters
@@ -2427,27 +2589,29 @@ function draw(now) {
     }
   }
 
-  // reported fixes + ghosts (from the belief shown)
+  // reported fixes + ghosts (from the belief shown), one colour per target type
   const report = hi >= 0 ? camp.perFlight[hi].report : [];
   const hov = state.hover >= 0 ? state.hover : state.pin;
-  for (const r of report) {
-    if (r.type !== 'ctrl') continue;
+  const fixAlpha = state.film ? clamp((prog - 0.5) / 0.5, 0, 1) : 1;   // in Film mode the fixes bloom in the second half of the reveal
+  if (fixAlpha > 0) for (const r of report) {
+    if (!HVT.includes(r.type)) continue;
+    const col = TYPE_COL[r.type];
     const dimmed = hov >= 0 && hov !== r.idx;
     if (r.ghost && state.showGhost && !r.located) {
-      ctx.globalAlpha = dimmed ? 0.25 : 0.8;
-      ctx.beginPath(); ctx.arc(X(r.ghost.x), Y(r.ghost.y), 6, 0, 2 * Math.PI); ctx.setLineDash([2, 3]); ctx.strokeStyle = rgba(COL.red, 0.8); ctx.lineWidth = 1.3; ctx.stroke(); ctx.setLineDash([]);
-      halo('ghost', X(r.ghost.x) + 8, Y(r.ghost.y), rgba(COL.red, 0.85), FONT_DATA);
+      ctx.globalAlpha = (dimmed ? 0.25 : 0.8) * fixAlpha;
+      ctx.beginPath(); ctx.arc(X(r.ghost.x), Y(r.ghost.y), 6, 0, 2 * Math.PI); ctx.setLineDash([2, 3]); ctx.strokeStyle = rgba(col, 0.8); ctx.lineWidth = 1.3; ctx.stroke(); ctx.setLineDash([]);
+      halo('ghost', X(r.ghost.x) + 8, Y(r.ghost.y), rgba(col, 0.85), FONT_DATA);
       ctx.globalAlpha = 1;
     }
     if (!r.located) continue;
     const el = r.el, ex = X(el.x), ey = Y(el.y), isHov = hov === r.idx;
-    ctx.globalAlpha = dimmed ? 0.3 : 1;
+    ctx.globalAlpha = (dimmed ? 0.3 : 1) * fixAlpha;
     ctx.beginPath(); ctx.ellipse(ex, ey, Math.max(el.a * s, 2), Math.max(el.b * s, 2), el.ang, 0, 2 * Math.PI);
-    ctx.fillStyle = rgba(COL.amber, 0.08); ctx.fill();
-    ctx.setLineDash([5, 4]); ctx.strokeStyle = rgba(COL.amber, 0.95); ctx.lineWidth = isHov ? 2.2 : 1.5; ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = rgba(col, 0.08); ctx.fill();
+    ctx.setLineDash([5, 4]); ctx.strokeStyle = rgba(col, 0.95); ctx.lineWidth = isHov ? 2.2 : 1.5; ctx.stroke(); ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(ex - 5, ey - 5); ctx.lineTo(ex + 5, ey + 5); ctx.moveTo(ex + 5, ey - 5); ctx.lineTo(ex - 5, ey + 5);
     ctx.strokeStyle = rgba(COL.ground, 0.9); ctx.lineWidth = 4; ctx.stroke(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.8; ctx.stroke();
-    halo(`${r.id} ${pct(r.pv.conf)} · ±${fmtM(el.a)}`, ex + 9, ey + 10, '#fff', FONT_DATA);
+    halo(`${r.id} ${HVT_TAG[r.type]} · ±${fmtM(el.a)}`, ex + 9, ey + 10, '#fff', FONT_DATA);
     ctx.globalAlpha = 1;
   }
 
@@ -2473,6 +2637,20 @@ function draw(now) {
   $('procBadge').hidden = !procActive;
 }
 
+/* ---------- on-map target-type HUD (what is lit up, by type) ---------- */
+function updateTypeHud() {
+  const hud = $('typeHud'); if (!hud) return;
+  const hi = camp ? heatIdxFor(segAt(state.t)) : -1;
+  if (hi < 0 || state.tab !== 0 || revealProg() <= 0) { hud.hidden = true; return; }
+  const report = camp.perFlight[hi].report;
+  hud.hidden = false;
+  hud.innerHTML = `<div class="th-h">High-value targets located</div>` + HVT.map(ty => {
+    const tgt = world.emitters.filter(e => e.type === ty).length;
+    const loc = report.filter(r => r.type === ty && r.located).length;
+    return `<div class="th"><span class="sw" style="background:${TYPE_COL[ty]}"></span><span class="tl">${HVT_LABEL[ty]}</span><span class="tn">${loc}<i>/${tgt}</i></span></div>`;
+  }).join('');
+}
+
 /* ---------- panel ---------- */
 function phaseLabel(seg) { return seg.kind === 'fly' ? ['rec', `Flight ${seg.k + 1} · recording`] : seg.kind === 'proc' ? ['proc', `Flight ${seg.k + 1} · processing`] : ['gap', `On the ground · planning flight ${seg.k + 2}`]; }
 function updatePanel() {
@@ -2484,17 +2662,18 @@ function updatePanel() {
   $('scrub').value = Math.round(state.t / timeline.total * 1000);
   $('briefTitle').textContent = METHODS[state.method].name + ' heat map';
   $('briefText').textContent = seg.kind === 'fly' ? `Recording along ${patName(camp.flights[seg.k].plan)}. Nothing is located in the air.` : seg.kind === 'proc' ? 'Memory card off the aircraft; the recordings become one probability grid per emitter.' : 'Heat map updated. The next route is chosen to cover what is still uncertain.';
-  $('briefStatus').textContent = hi >= 0 ? `After flight ${hi + 1}: ${camp.perFlight[hi].report.filter(r => r.located && r.type === 'ctrl').length} located` : 'No data yet';
+  $('briefStatus').textContent = hi >= 0 ? `After flight ${hi + 1}: ${camp.perFlight[hi].report.filter(r => r.located && HVT.includes(r.type)).length} targets located` : 'No data yet';
 
-  const report = hi >= 0 ? camp.perFlight[hi].report.filter(r => r.type === 'ctrl') : [];
+  const report = hi >= 0 ? camp.perFlight[hi].report.filter(r => HVT.includes(r.type)) : [];
   const loc = report.filter(r => r.located);
+  updateTypeHud();
   // best fix
   const bf = $('bestfix');
   if (!loc.length) { bf.innerHTML = `<p class="empty">${hi < 0 ? 'First flight still recording. The heat map appears after it lands and the recordings are processed.' : state.method === 'rss' ? 'Strength only, against aimed antennas: no clean peak yet. Fly more angles, drop altitude, or switch method.' : 'No control station pinned down yet. More passes from new headings will sharpen the heat.'}</p>`; $('bfNote').textContent = ''; }
   else {
     const r = loc.slice().sort((a, b) => a.el.a - b.el.a)[0];
     $('bfNote').textContent = 'tightest';
-    bf.innerHTML = `<div class="fixhead"><span class="chip ctrl">${r.id}</span><div><div class="fixclass">Drone control link <span class="fixsub">${pct(r.pv.conf)}</span></div><div class="fixsub">${r.nHdg} headings · ${r.nPos} recording spots${r.confusers ? ` · ${r.confusers} confuser${r.confusers > 1 ? 's' : ''} in band` : ''}</div></div></div>
+    bf.innerHTML = `<div class="fixhead"><span class="chip ${r.type}">${r.id}</span><div><div class="fixclass">${HVT_LABEL[r.type]} <span class="fixsub">${pct(r.pv.conf)}</span></div><div class="fixsub">${r.nHdg} headings · ${r.nPos} recording spots${r.confusers ? ` · ${r.confusers} confuser${r.confusers > 1 ? 's' : ''} in band` : ''}</div></div></div>
       <dl class="stats">
         <div><dt>Error vs truth</dt><dd>${fmtM(r.err)}</dd><small>known only in simulation</small></div>
         <div><dt>Uncertainty 95%</dt><dd>±${fmtM(r.el.a)}</dd><small>${fmtM(r.el.a)} × ${fmtM(r.el.b)}</small></div>
@@ -2510,7 +2689,7 @@ function updatePanel() {
   // flights list
   $('flCount').textContent = `${camp.nF} total`;
   $('flights').innerHTML = camp.flights.map((f, k) => {
-    const rep = camp.perFlight[k].report.filter(r => r.located && r.type === 'ctrl').length;
+    const rep = camp.perFlight[k].report.filter(r => r.located && HVT.includes(r.type)).length;
     const on = k === seg.k;
     return `<button class="flt ${on ? 'on' : ''}" data-k="${k}"><span class="fn">${k + 1}</span><span class="fp">${PATTERNS[f.plan.pat].name} <em>${PATTERNS[f.plan.pat].lanes[f.plan.lane] || ''} · ${f.plan.alt} m</em></span><span class="fq">${rep} loc</span><span class="fm">${f.F.stored.toLocaleString('en-US')} bursts · ${fmtM(f.len)} · ${fmtT(f.tEnd)}</span></button>`;
   }).join('');
@@ -2528,15 +2707,15 @@ function updatePanel() {
     const q = r.located ? '±' + fmtM(r.el.a) : r.ghost ? 'ghost' : 'rough';
     const qc = r.located ? (r.el.a < 500 ? 'tight' : r.el.a < 2000 ? 'rough' : 'poor') : 'poor';
     const meta = [`${r.nHdg} hdg`, `${r.nB} brst`, r.why, state.truth && r.located ? `err ${fmtM(r.err)}` : null, r.moved > 0 ? `moved ${fmtM(r.moved)}` : null, r.retuned ? 'retuned' : null].filter(Boolean).join(' · ');
-    return `<button class="contact ${state.pin === r.idx ? 'hl' : ''}" data-i="${r.idx}"><span class="chip ctrl">${r.id}</span><span class="cls">Control link <em>${pct(r.pv.conf)}</em></span><span class="q ${qc}">${q}</span><span class="meta">${meta}</span></button>`;
-  }).join('') || '<p class="empty">No control links tracked yet.</p>';
+    return `<button class="contact ${state.pin === r.idx ? 'hl' : ''}" data-i="${r.idx}"><span class="chip ${r.type}">${r.id}</span><span class="cls">${HVT_LABEL[r.type]} <em>${pct(r.pv.conf)}</em></span><span class="q ${qc}">${q}</span><span class="meta">${meta}</span></button>`;
+  }).join('') || '<p class="empty">No targets tracked yet.</p>';
 
   // final-result panel: the heat map's conclusion, with per-station probabilities
   const complete = state.t >= timeline.total - 1 && hi >= 0;
   const rs = $('resultsSection');
   if (complete) {
     rs.hidden = false;
-    const locs = report.filter(r => r.located).sort((a, b) => b.pv.conf - a.pv.conf || a.el.a - b.el.a);
+    const locs = report.filter(r => r.located).sort((a, b) => (a.type === b.type ? a.el.a - b.el.a : HVT.indexOf(a.type) - HVT.indexOf(b.type)));
     const cands = report.filter(r => !r.located && r.reportable).sort((a, b) => a.el.a - b.el.a);
     const ghostN = report.filter(r => r.ghost && !r.located).length;
     const es = locs.map(r => r.err).filter(isFinite).sort((a, b) => a - b), med = es.length ? es[es.length >> 1] : NaN;
@@ -2544,12 +2723,15 @@ function updatePanel() {
     const rrow = (r, isLoc) => {
       const conf = Math.round(r.pv.conf * 100), cc = r.el.a < 1500 ? 'good' : r.el.a < 3000 ? 'warn' : '';
       const meta = isLoc ? `±${fmtM(r.el.a)} (95%)${state.truth && isFinite(r.err) ? ` · ${fmtM(r.err)} from truth` : ''}` : (r.why || 'fix not tight enough');
-      return `<div class="rrow ${isLoc ? 'loc' : 'miss'}"><span class="chip ctrl">${r.id}</span><span class="rname">${isLoc ? 'Control station' : 'Candidate'}</span><span class="rprob ${isLoc ? cc : ''}">${conf}%</span><span class="rbar"><i style="width:${conf}%"></i></span><span class="rmeta">${meta}</span></div>`;
+      return `<div class="rrow ${isLoc ? 'loc' : 'miss'}"><span class="chip ${r.type}">${r.id}</span><span class="rname">${HVT_LABEL[r.type]}</span><span class="rprob ${isLoc ? cc : ''}">${conf}%</span><span class="rbar"><i style="width:${conf}%;background:${TYPE_COL[r.type]}"></i></span><span class="rmeta">${meta}</span></div>`;
     };
-    let html = `<div class="rsum"><b>${locs.length}</b> of <b>${camp.summary.targets}</b> control stations located · ${ghostN} ghost${ghostN === 1 ? '' : 's'}${state.truth && es.length ? ` · median error ${fmtM(med)}` : ''}</div>`;
+    const bt = camp.summary.byType;
+    const chips = HVT.map(ty => `<span class="tchip" style="--tc:${TYPE_COL[ty]}">${HVT_LABEL[ty]} <b>${bt[ty].located}/${bt[ty].targets}</b></span>`).join('');
+    let html = `<div class="rsum"><b>${locs.length}</b> of <b>${camp.summary.targets}</b> high-value targets located · ${ghostN} ghost${ghostN === 1 ? '' : 's'}${state.truth && es.length ? ` · median error ${fmtM(med)}` : ''}</div>`;
+    html += `<div class="tchips">${chips}</div>`;
     html += locs.map(r => rrow(r, true)).join('') + cands.map(r => rrow(r, false)).join('');
-    if (!locs.length && !cands.length) html += `<p class="empty">No control station reached a confident, unambiguous fix. Add flights, cross more headings, or use the combined method.</p>`;
-    html += `<p class="cap" style="margin-top:4px">Probability = chance the signal is a drone control link (from its fingerprint). ±95% is the location box; a ghost is an unresolved left/right mirror.</p>`;
+    if (!locs.length && !cands.length) html += `<p class="empty">No target reached a confident, unambiguous fix. Add flights, cross more headings, or use the combined method.</p>`;
+    html += `<p class="cap" style="margin-top:4px">Probability = chance the signal is that target type (from its signature). ±95% is the location box; a ghost is an unresolved left/right mirror.</p>`;
     $('resultsBox').innerHTML = html;
   } else rs.hidden = true;
 
@@ -2607,6 +2789,10 @@ function renderBatch() {
   if (!B) { $('batchTbl').innerHTML = ''; $('batchNote').textContent = 'Batch results load with the page.'; return; }
   $('batchTbl').innerHTML = `<tr><th>Setup</th><th>Located</th><th>Inside&nbsp;95%</th><th>Median&nbsp;err</th><th>Ghosts</th></tr>` + B.rows.map(r => `<tr><td>${r.name}</td><td>${r.loc}</td><td class="${r.inside >= 90 ? 'good' : r.inside >= 70 ? 'warn' : 'bad'}">${r.inside}%</td><td>${r.err}</td><td>${r.ghost}</td></tr>`).join('');
   $('batchNote').textContent = B.note;
+  if (B.typeRows && $('typeTbl')) {
+    $('typeTbl').innerHTML = `<tr><th>Target type</th><th>Located</th><th>Inside&nbsp;95%</th><th>Median&nbsp;err</th><th>Ghosts</th></tr>` + B.typeRows.map(r => `<tr><td>${r.name}</td><td>${r.loc}</td><td class="${r.inside >= 90 ? 'good' : r.inside >= 70 ? 'warn' : 'bad'}">${r.inside}%</td><td>${r.err}</td><td>${r.ghost}</td></tr>`).join('');
+    $('typeTblNote').textContent = B.typeNote || '';
+  }
 }
 function renderCmpProse() {
   $('cmpProse').innerHTML = (window.BATCH ? window.BATCH.prose : []).map(p => `<p class="cap" style="font-size:13px;color:var(--ink-dim);margin:8px 0">${p}</p>`).join('');
@@ -2657,12 +2843,15 @@ function afterChange() { if (state.tab === 1) { cmpOldSim = null; updateCompare(
 
 /* ---------- static content ---------- */
 function fillStatic() {
+  const dot = c => `<svg width="26" height="14"><circle cx="13" cy="7" r="5.5" fill="${c}"/></svg>`;
   $('legend').innerHTML = [
-    ['<svg width="26" height="12"><rect x="2" y="2" width="22" height="8" fill="url(#hg)"/><defs><linearGradient id="hg"><stop offset="0" stop-color="#1e1622"/><stop offset="1" stop-color="#fff896"/></linearGradient></defs></svg>', 'Heat: likely control station'],
+    [dot(TYPE_COL.ctrl), 'Drone operator (UAS)'],
+    [dot(TYPE_COL.jam), 'Jammer (EW)'],
+    [dot(TYPE_COL.c2), 'Command post (C2)'],
+    [dot(TYPE_COL.relay), 'Comms relay (COMMS)'],
     ['<svg width="26" height="16"><ellipse cx="13" cy="8" rx="11" ry="6" fill="none" stroke="#f3b443" stroke-width="1.3" stroke-dasharray="3 2"/><path d="M10 5 L16 11 M16 5 L10 11" stroke="#fff" stroke-width="1.5"/></svg>', 'Located fix, 95% ellipse'],
     ['<svg width="26" height="16"><circle cx="13" cy="8" r="6" fill="none" stroke="#ff5f58" stroke-dasharray="2 3"/></svg>', 'Ghost (unresolved mirror)'],
-    ['<svg width="26" height="16"><rect x="8" y="3" width="10" height="10" transform="rotate(45 13 8)" fill="#f3b443"/></svg>', 'Control station (truth)'],
-    ['<svg width="26" height="16"><rect x="8" y="3" width="10" height="10" fill="none" stroke="#9fb2c8" stroke-width="1.6"/></svg>', 'Radio (truth)'],
+    ['<svg width="26" height="16"><rect x="8" y="3" width="10" height="10" transform="rotate(45 13 8)" fill="#f3b443"/></svg>', 'Target (truth)'],
     ['<svg width="26" height="12"><rect x="4" y="3" width="2.5" height="2.5" fill="#f3b443" opacity=".7"/><rect x="12" y="7" width="2.5" height="2.5" fill="#9fb2c8" opacity=".7"/><rect x="19" y="2" width="2.5" height="2.5" fill="#a78bff" opacity=".7"/></svg>', 'Background spectrum (other emitters)'],
     ['<svg width="26" height="12"><line x1="1" y1="6" x2="25" y2="6" stroke="#36d1be" stroke-width="2"/></svg>', 'Current flight path'],
     ['<svg width="26" height="12"><line x1="1" y1="6" x2="25" y2="6" stroke="#9fb2c8" stroke-width="1.5" opacity=".5"/></svg>', 'Earlier flight path'],
@@ -2729,7 +2918,11 @@ const contactsEl = $('contacts');
 contactsEl.addEventListener('mouseover', e => { const b = e.target.closest('.contact'), v = b ? +b.dataset.i : -1; if (v !== state.hover) { state.hover = v; } });
 contactsEl.addEventListener('mouseleave', () => { state.hover = -1; });
 contactsEl.addEventListener('click', e => { const b = e.target.closest('.contact'); if (!b) return; const i = +b.dataset.i; state.pin = state.pin === i ? -1 : i; updatePanel(); });
-document.addEventListener('keydown', e => { if (e.target.closest('input,textarea,select')) return; if (e.code === 'Space') { e.preventDefault(); $('play').click(); } });
+document.addEventListener('keydown', e => { if (e.target.closest('input,textarea,select')) return; if (e.code === 'Space') { e.preventDefault(); if (state.film) { if (state.filmPhase === 'raw') runFilters(); } else $('play').click(); } if (e.key === 'Escape' && state.film) exitFilm(); });
+$('filmBtn').addEventListener('click', () => enterFilm());
+$('filmExit').addEventListener('click', exitFilm);
+$('filmRun').addEventListener('click', runFilters);
+$('filmReplay').addEventListener('click', () => { state.filmPhase = 'raw'; state.filmProg = 0; state.filterStage = 0; $('filmRun').hidden = false; $('filmReplay').hidden = true; updateFilmOverlay(); updateTypeHud(); });
 
 // pan/zoom
 const ptrs = new Map(); let pinch = null;
@@ -2742,18 +2935,70 @@ cvs.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.offsetX, e.off
 function resize() { const r = $('mapwrap').getBoundingClientRect(); view.w = Math.max(1, r.width); view.h = Math.max(1, r.height); view.dpr = Math.min(window.devicePixelRatio || 1, 2); cvs.width = Math.round(view.w * view.dpr); cvs.height = Math.round(view.h * view.dpr); if (!view.fitted) { fitView(); view.fitted = true; } else view.s = clamp(view.s, sMin(), S_MAX); }
 new ResizeObserver(resize).observe($('mapwrap'));
 
+/* ---------- Film mode: a clean full-bleed reveal for screen-recording the pitch video ---------- */
+const FILM_SEED = 'GOLF77';
+const FILM_STAGE_MS = 620, FILM_BLOOM_MS = 1900;
+const FILTER_STAGES = [
+  ['Band gate', 'keep only the watched frequency ranges'],
+  ['Self-noise blanking', "drop our own platform's emissions"],
+  ['Noise-floor margin', 'require signal above the noise floor'],
+  ['Signature match', 'match the known target fingerprints'],
+  ['Convergence', 'bearings must cross on one spot'],
+];
+function enterFilm(seed) {
+  state.film = true; state.filmPhase = 'raw'; state.filmProg = 0; state.filterStage = 0; state.tab = 0; state.playing = false;
+  state.truth = false; state.showPaths = false; state.showGhost = true; state.showSpectrum = true; state.showNaive = false;
+  if (seed) state.seed = seed;
+  document.body.classList.add('film-on');
+  setTab(0);
+  $('filmOverlay').hidden = false; $('filmRun').hidden = false; $('filmReplay').hidden = true;
+  rebuildWorld(); state.t = timeline.total;       // show the final, fully-recorded belief
+  resize(); fitView(); updateFilmOverlay(); updatePanel();
+}
+function exitFilm() {
+  state.film = false; document.body.classList.remove('film-on'); $('filmOverlay').hidden = true;
+  state.truth = true; state.showPaths = true;
+  try { history.replaceState(null, '', '#' + state.seed); } catch (e) {}
+  resize(); fitView(); updatePanel();
+}
+function runFilters() { state.filmPhase = 'running'; state.filmT0 = performance.now(); state.filterStage = 0; state.filmProg = 0; $('filmRun').hidden = true; updateFilmOverlay(); }
+function tickFilm(now) {
+  if (!state.film || state.filmPhase !== 'running') return;
+  const el = now - state.filmT0, stagesDur = FILTER_STAGES.length * FILM_STAGE_MS;
+  if (el < stagesDur) { state.filterStage = Math.min(FILTER_STAGES.length, Math.floor(el / FILM_STAGE_MS) + 1); state.filmProg = 0; }
+  else { state.filterStage = FILTER_STAGES.length; state.filmProg = Math.min(1, (el - stagesDur) / FILM_BLOOM_MS); if (state.filmProg >= 1) { state.filmPhase = 'done'; $('filmReplay').hidden = false; } }
+  updateFilmOverlay(); updateTypeHud();
+}
+function updateFilmOverlay() {
+  const cap = $('filmCaption'), stg = $('filmStages'); if (!cap) return;
+  const i = state.filterStage;
+  if (state.filmPhase === 'raw') cap.innerHTML = `<b>Most signals are noise.</b> ${state.density}+ emitters recorded across ${camp ? camp.nF : 4} flights — one undifferentiated heat map.`;
+  else if (state.filmPhase === 'running') cap.innerHTML = `<b>Running the signature filter…</b>`;
+  else cap.innerHTML = `<b>Gold, hidden in plain sight.</b> Four high-value target types — classified and located.`;
+  stg.innerHTML = FILTER_STAGES.map((sgt, k) => {
+    const cls = state.filmPhase === 'done' ? 'done' : state.filmPhase === 'raw' ? 'pending' : k < i ? 'done' : k === i - 1 ? 'active' : 'pending';
+    return `<li class="${cls}"><b>${sgt[0]}</b><span>${sgt[1]}</span></li>`;
+  }).join('');
+}
+
 // boot
-{ const h = (location.hash || '').replace('#', '').toUpperCase(); if (/^[A-Z0-9]{2,10}$/.test(h)) state.seed = h; }
+{ let h = (location.hash || '').replace('#', '').toUpperCase(); let film = false;
+  if (h.indexOf('FILM') === 0) { film = true; const m = h.match(/FILM[:\-]?([A-Z0-9]{2,10})?/); if (m && m[1]) state.seed = m[1]; else state.seed = FILM_SEED; }
+  else if (/^[A-Z0-9]{2,10}$/.test(h)) state.seed = h;
+  state._bootFilm = film;
+}
 fillStatic();
 resize();
 rebuildWorld();
 setPlaying(state.playing);
 syncControls();
 updatePanel();
+if (state._bootFilm) enterFilm();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (state.tab === 1) updateCompare(); else updatePanel(); });
 let last = performance.now(), lastPanel = 0;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (state.film && state.filmPhase === 'running') tickFilm(now);
   if (state.playing && state.tab === 0) { state.t += dt * state.speed; if (state.t >= timeline.total) { state.t = timeline.total; setPlaying(false); updatePanel(); } }
   if (state.follow && state.tab === 0) { const seg = segAt(state.t); if (seg.kind === 'fly') { const p = flPos(camp.flights[seg.k], state.t - seg.t0); view.cx += (p.x - view.cx) * 0.2; view.cy += (p.y - view.cy) * 0.2; } }
   if (state.tab === 0) draw(now);

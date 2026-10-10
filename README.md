@@ -112,8 +112,23 @@ Where the first simulator locates emitters **in the air, during one mission**, w
 
 ## What it shows
 
-- **Tab 1, Campaign:** fly a sequence of predefined routes over one map. Each flight only records; when it lands, the recordings become one probability grid per emitter, and the grids add into the heat map. The next flight is then flown (or, with planning on, chosen from the heat so far). Scrub the timeline through flights, the between-flight processing, and the gaps, or jump straight to the final heat map with **End**. A **number-of-flights** slider (1–10) adds passes beyond the chosen plan; a **background-spectrum** toggle draws the ~150 other emitters the sorter must cut through; and a **Final result** panel lists each station's probability of being a control link and its location box once the campaign completes.
-- **Tab 2, Compare:** the same seed, same predefined flights, solved with two receivers side by side — a 5-channel **coherent array** against the **bladeRF** — so the gap is the receiver alone. The live-tasking sim (coherent array plus the 180° arc) sits there as a reference, to show the arc is the bigger advantage. Plus a batch table across 8 maps and every setting.
+- **Tab 1, Campaign:** fly a sequence of predefined routes over one map. Each flight only records; when it lands, the recordings become one probability grid per emitter, and the grids add into the heat map. The next flight is then flown (or, with planning on, chosen from the heat so far). Scrub the timeline through flights, the between-flight processing, and the gaps, or jump straight to the final heat map with **End**. The heat and the located fixes are **coloured by target type** (see below); an on-map HUD tallies how many of each type are located. A **number-of-flights** slider (1–10) adds passes beyond the chosen plan; a **background-spectrum** toggle draws the ~150 other emitters the sorter must cut through; and a **Final result** panel lists each target's probability and its location box once the campaign completes.
+- **Tab 2, Compare:** the same seed, same predefined flights, solved with two receivers side by side — a 5-channel **coherent array** against the **bladeRF** — so the gap is the receiver alone. The live-tasking sim (coherent array plus the 180° arc) sits there as a reference, to show the arc is the bigger advantage. Plus a batch table across 8 maps and every setting, and a per-target-type breakdown.
+
+## Four high-value target types
+
+The same passive method, the same payload and the same 5-stage filter locate **four** kinds of high-value target, each drawn in its own colour on the map and in the results:
+
+- **Drone operators (UAS)** — frequency-hopping control links, aimed antennas, often relocating and retuning. The **hard case**: bursty transmission and the bladeRF's left/right mirror mean fewer, looser fixes and the occasional ghost.
+- **Jammers (EW)** — wideband, very high power, continuous. The **easiest** target in the sim: a jammer screams, so its bearings converge to a tight fix with no surviving mirror.
+- **Command posts (C2)** — continuous net-control comms nodes, sited deep in the rear. Continuous transmission from a fixed point → reliable, tight fixes.
+- **Comms relays (COMMS)** — continuous duplex repeaters, often on high ground. Same story: continuous and fixed, so they locate reliably.
+
+Each type has its **own signature** in the stage-4 library (a hopping-control fingerprint, a wideband-jammer signature, a net-control carrier, a duplex-repeater carrier); the 100+ background emitters match none of them and are dropped. The honesty consequence is visible in the per-type batch table: the continuous emitters are tighter and their 95% ellipses conservative, while operators are looser — which is exactly how passive RF behaves. **GNSS spoofers**, the fifth category often shown on target lists, are deliberately **not** modelled: a spoofer's signal is low-power and satellite-like, and claiming a tight fix on one would overstate what this method can do.
+
+## Film mode (for a clean recording)
+
+A **Film** button (and the `heatmap.html#FILM` hash) opens a full-bleed, chrome-free reveal built for screen-recording the pitch: it opens on the raw, undifferentiated heat map over the background clutter — *most signals are noise* — then one button runs the 5-stage filter as a visible cascade, the clutter collapses, and the four target types bloom in, classified and located — *gold, hidden in plain sight*. `#FILM` curates the GOLF77 seed; the Film button films whatever seed you are on. Space runs the filters, Esc exits.
 
 ## The receiver: bladeRF 2.0 micro xA4
 
@@ -155,17 +170,28 @@ All numbers are modelled, not field results. Across 8 maps × 3 altitudes, Front
 |---|---|---|---|---|
 | Live-tasking sim · wideband array + 180° arc | 72 fixes | 100% | 244 m | — |
 | Live-tasking sim · KrakenSDR + 180° arc | 48 fixes | 94% | 365 m | — |
-| Heat map · bladeRF + array fused · grid | 36/75 | 81% | 427 m | 14 |
-| Heat map · coherent array · grid (no arc) | 30/75 | 82% | 667 m | 17 |
-| Heat map · bearings · grid | 33/75 | 88% | 601 m | 16 |
-| Heat map · combined · grid | 31/75 | 81% | 735 m | 19 |
-| Heat map · combined · multi-angle | 33/75 | 93% | 603 m | 25 |
-| Heat map · combined · plan between flights | 39/75 | 75% | 629 m | 17 |
-| Heat map · strength only · aimed enemy | 4/75 | 64% | 4948 m | 27 |
-| Heat map · strength only · omni enemy | 20/75 | 78% | 1865 m | 23 |
-| Heat map · combined · single pass | 12/75 | 100% | 332 m | 28 |
+| Heat map · bladeRF + array fused · grid | 40/75 | 77% | 468 m | 14 |
+| Heat map · coherent array · grid (no arc) | 29/75 | 79% | 370 m | 15 |
+| Heat map · bearings · grid | 38/75 | 86% | 746 m | 19 |
+| Heat map · combined · grid | 31/75 | 78% | 587 m | 21 |
+| Heat map · combined · multi-angle | 36/75 | 93% | 469 m | 23 |
+| Heat map · combined · plan between flights | 35/75 | 81% | 573 m | 24 |
+| Heat map · strength only · aimed enemy | 5/75 | 38% | 5601 m | 30 |
+| Heat map · strength only · omni enemy | 21/75 | 84% | 1199 m | 17 |
+| Heat map · combined · single pass | 13/75 | 96% | 297 m | 24 |
 
-Reading it. Every row runs the **same 5-stage filter** and counts **control links only**, so the differences are real, not bookkeeping:
+These rows count **control links only** (apples-to-apples with the live-tasking sim). The same payload also locates the other three target types — broken out here at the headline config (bladeRF · combined · crossing grid):
+
+| Target type | Located | Inside 95% | Median error | Ghosts |
+|---|---|---|---|---|
+| Drone operators (UAS) | 31/75 | 78% | 587 m | 21 |
+| Jammers (EW) | 15/24 | 100% | 225 m | 0 |
+| Command posts (C2) | 33/48 | 100% | 296 m | 0 |
+| Comms relays (COMMS) | 48/48 | 100% | 306 m | 0 |
+
+The continuous, high-power emitters (jammers, command posts, relays) are far easier than the bursty, aimed, relocating operators: they transmit non-stop from a fixed point, so bearings converge, no left/right mirror survives (zero ghosts), and the 95% ellipse is conservative (100% inside). Operators are the hard case and drive the headline number down. This is the honest shape of passive RF — easy targets are easy, the tactical ones are hard.
+
+Reading the control-link table. Every row runs the **same 5-stage filter**, so the differences are real, not bookkeeping:
 
 - **The live-tasking sim's edge splits two ways, and neither is the whole story.** *Band:* a wideband array (hears 2.4 GHz) locates the most; the same-band KrakenSDR locates fewer because it misses the 2.4 GHz operators. *Arc:* give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops again. Record-then-map on fixed lines is the larger single loss, but the band matters too — my first write-up wrongly pinned it all on the arc (and inflated the old number by counting jammers and radios).
 - **Array vs bladeRF, held to the same flights, is close.** On the crossing grid the array is not tighter and locates no more, because it sweeps ~3× slower (fewer bursts per fix) and is blind above 1.77 GHz. Its no-mirror edge pays off on single/parallel plans, where the bladeRF cannot resolve its mirror. So the receiver choice depends on the flight plan.
@@ -175,6 +201,7 @@ Reading it. Every row runs the **same 5-stage filter** and counts **control link
 
 ## Honest limits specific to this page
 
-- The 95% ellipse is calibrated (×2.0 inflation) so the truth lands inside it ~80–96% of the time depending on the plan (96% for multi-angle, lower for grid and between-flight planning) — short of a true 95% on some plans, because the residual is genuine mislocation the fit cannot flag. The batch table's per-setup inside-95% column shows exactly where it is honest and where it is optimistic.
+- The 95% ellipse is calibrated (×2.0 inflation) so the truth lands inside it ~78–96% of the time for operators depending on the plan (96% for multi-angle, lower for grid and between-flight planning) — short of a true 95% on some plans, because the residual is genuine mislocation the fit cannot flag. For the continuous emitter types (jammers, command posts, relays) it sits at ~100%, i.e. conservative. The batch tables' per-setup and per-type inside-95% columns show exactly where it is honest and where it is optimistic.
+- Command posts and comms relays are modelled as continuous fixed emitters with a recognisable signature; real nets are intermittent and can be confused with other comms, so their numbers here are the optimistic end. **GNSS spoofers** are not modelled at all — a low-power, satellite-like signal this method would struggle to pin, so claiming a tight fix on one would overstate the capability.
 - The strength method's range-from-power fit is deliberately naive (one unknown constant). A real system would use terrain and known-power references; this page shows the floor, not the ceiling.
 - Everything the first simulator does not model (validated hop fingerprint, 3D geolocation, fibre-optic FPV drones, real two-element calibration and mutual coupling, weather, endurance and survivability) is unmodelled here too. And as there, error-vs-truth is knowable only because the simulator placed the emitters.
