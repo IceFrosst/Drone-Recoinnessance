@@ -326,7 +326,12 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
         <h2>Method &amp; plan</h2>
         <div class="ctl">
           <div class="row">
-            <span class="lbl">Receiver method <span class="val" id="methodVal"></span></span>
+            <span class="lbl">Receiver <span class="val" id="rxVal"></span></span>
+            <div class="seg wide" id="rx" role="group" aria-label="Receiver"></div>
+            <span class="note" id="rxNote"></span>
+          </div>
+          <div class="row" id="methodRow">
+            <span class="lbl">bladeRF method <span class="val" id="methodVal"></span></span>
             <div class="seg wide three" id="method" role="group" aria-label="Receiver method"></div>
             <span class="note" id="methodNote"></span>
           </div>
@@ -400,32 +405,34 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
     <!-- COMPARE TAB -->
     <div id="railCompare" hidden>
       <section>
-        <h2>How this differs from the live-tasking sim</h2>
+        <h2>Same flights, two receivers</h2>
+        <p class="cmpnote" style="margin:0 0 4px">To compare fairly, both receivers fly the <b>same predefined routes</b>, record, and build the heat map after landing — <b>no 180° arc, no in-air tasking</b>, multiple flights per map. The only difference is the receiver, so the gap below is what the receiver alone buys.</p>
         <div class="diffcards">
-          <div class="diffcard old">
-            <h4>RF Recon Simulator (the old one)</h4>
+          <div class="diffcard new">
+            <h4>Coherent array (5-ch)</h4>
             <ul id="diffOld"></ul>
           </div>
           <div class="diffcard new">
-            <h4>Heat-Map Recon (this one)</h4>
+            <h4>bladeRF (2-ch)</h4>
             <ul id="diffNew"></ul>
           </div>
         </div>
       </section>
       <section>
-        <h2>Same seed, both methods <small id="cmpSeed"></small></h2>
+        <h2>Same seed, same flights <small id="cmpSeed"></small></h2>
         <div class="cmp">
           <div class="pane">
-            <h3>Live tasking<span class="tag old">coherent AoA</span></h3>
+            <h3>Coherent array<span class="tag old">5-ch · ≤1.77 GHz</span></h3>
             <canvas id="cmpOld" width="600" height="400"></canvas>
             <p id="cmpOldP"></p>
           </div>
           <div class="pane">
-            <h3>Heat map<span class="tag new">bladeRF campaign</span></h3>
+            <h3>bladeRF<span class="tag new">2-ch · ≤6 GHz</span></h3>
             <canvas id="cmpNew" width="600" height="400"></canvas>
             <p id="cmpNewP"></p>
           </div>
         </div>
+        <p class="cmpnote" id="cmpRef"></p>
       </section>
       <section>
         <h2>Batch results <small>8 maps &times; settings</small></h2>
@@ -1559,6 +1566,15 @@ const RSS_MODEL_DB = 4;             // spread the strength fit assumes around th
 const OMNI_GAIN_DB = -6;            // stock omni antenna vs an aimed patch at boresight
 const OMNI_VERT_BEAM_DEG = 78;      // vertical beamwidth of a stock dipole
 
+// Alternative receiver for the fair, like-for-like comparison: a 5-channel coherent CIRCULAR array
+// (KrakenSDR-class). It gives an UNAMBIGUOUS azimuth (no left/right mirror), tighter bearings, and
+// better confuser rejection than the 2-element bladeRF — but it sweeps slower (fewer bursts) and is
+// blind above 1.77 GHz, so it never hears the 2.4 GHz operators the bladeRF can. Same flights, no arc.
+const ARRAY = { name: 'Coherent array', sub: '5-ch · KrakenSDR-class · ≤1.77 GHz', ceil: 1766, revisitS: 6, sigMult: 1.0, grams: 400, price: '~$900' };
+const rxOf = cfg => cfg.rx === 'array'
+  ? { array: true, ceil: ARRAY.ceil, revisitS: ARRAY.revisitS, sigMult: ARRAY.sigMult, leakTolDeg: 10, leakP: 0.22 }
+  : { array: false, ceil: BRF.ceil, revisitS: (cfg.method === 'rss' ? REVISIT_RSS_S : REVISIT_BRG_S), sigMult: IFM_SIGMA_MULT, leakTolCos: LEAK_U_TOL, leakP: cfg.method === 'rss' ? LEAK_P_RSS : LEAK_P_BRG };
+
 // Clutter the sorter cannot separate from a target (other links with the same band and fingerprint)
 const LEAK_U_TOL = 0.12;            // bearing methods: within this cone-angle difference the two are confusable
 const LEAK_P_BRG = 0.5;             // ... and a confusable burst is filed under the target at this rate
@@ -1720,8 +1736,9 @@ function coneU(px, py, pz, d, ex, ey, ez) { const vx = ex - px, vy = ey - py, vz
 function flyFlight(W, cfg, ctx, k, plan) {
   const E = ctx.epochs[k], route = buildRoute(W, plan);
   const R = makeRng(W.seed + '|fly|' + k), Rp = makeRng(W.seed + '|popfly|' + k);
-  const alt = plan.alt, altZ = W.meanH + alt, dwell = METHODS[cfg.method].revisit, bw = cfg.beam, L = W.launch;
-  const pcfg = { bands: brfBands(), selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW };
+  const rxt = rxOf(cfg);
+  const alt = plan.alt, altZ = W.meanH + alt, dwell = rxt.revisitS, bw = cfg.beam, L = W.launch;
+  const pcfg = { bands: rxt.array ? bandsFor(ARRAY.ceil) : brfBands(), selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW };
   let px = L.x, py = L.y, wi = 0, goal = route.wps[0], hdg = azOf(goal.x - px, goal.y - py), homing = false;
   let dx = 0, dy = 0, dvx = 0, dvy = 0, gnssIn = false, commsIn = null, navSig = NAV_GNSS_SIG_M, crossedE = false, wasOver = false;
   const path = { t: [], x: [], y: [], h: [], nx: [], ny: [] }, events = [];
@@ -1747,7 +1764,7 @@ function flyFlight(W, cfg, ctx, k, plan) {
     const bs = o.bs, n = bs.length, m = bs.slice().sort((a, b) => a.u - b.u)[n >> 1];
     let rs = 0; for (const b of bs) rs += b.rss;
     const kinds = {}; for (const b of bs) kinds[b.kind] = (kinds[b.kind] || 0) + 1;
-    tr.bins.push({ k: o.k, t: m.t, x: m.x, y: m.y, z: m.z, hx: m.hx, hy: m.hy, u: m.u, sR: m.sR / Math.sqrt(n), sB: m.sB, ns: m.ns, rss: rs / n, n, kinds });
+    tr.bins.push({ k: o.k, t: m.t, x: m.x, y: m.y, z: m.z, hx: m.hx, hy: m.hy, u: m.u, az: m.az, sR: m.sR / Math.sqrt(n), sB: m.sB, ns: m.ns, rss: rs / n, n, kinds });
   };
   const addBurst = (tr, b) => {
     if (tr.open && (tr.open.k !== k || b.t - tr.open.t0 > BIN_S)) closeBin(tr);
@@ -1756,24 +1773,26 @@ function flyFlight(W, cfg, ctx, k, plan) {
   };
   const measure = (snr, ex, ey, ez, d) => {
     const vx = ex - px, vy = ey - py, vz = ez - altZ, horiz = Math.hypot(vx, vy), vr = Math.hypot(horiz, vz);
-    const uT = (vx * d[0] + vy * d[1]) / vr, sT = Math.sqrt(Math.max(0, 1 - uT * uT));
+    const uT = (vx * d[0] + vy * d[1]) / vr, sT = Math.sqrt(Math.max(0, 1 - uT * uT)), azT = azOf(vx, vy);
     const elev = Math.atan2(-vz, Math.max(horiz, 1)) * R2D, steep = elev > STEEP_ELEV_DEG ? (elev - STEEP_ELEV_DEG) / (90 - STEEP_ELEV_DEG) : 0;
     const q = clamp((SNR_STRONG_DB - snr) / (SNR_STRONG_DB - DETECT_SNR_DB), 0, 1);
-    const sR = (SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * q) * (1 + (STEEP_SIGMA_MAX_MULT - 1) * steep) * D2R * IFM_SIGMA_MULT;
+    const sR = (SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * q) * (1 + (STEEP_SIGMA_MAX_MULT - 1) * steep) * D2R * rxt.sigMult;
     const sB = cfg.realism ? Math.hypot(cfg.attDeg, REAL_RESID_DEG) * D2R : 0;
     const perKm = SIGMA_PER_KM_DEG * D2R * horiz / 1000;
-    let u = uT + R.norm() * Math.hypot(sR, (sB + perKm) * sT), kind = snr >= SNR_STRONG_DB - 3 ? 'strong' : 'weak';
-    if (steep > 0 && R() < STEEP_WILD_P_MAX * steep) { u = R.range(-1, 1); kind = 'steep'; }
+    const noise = R.norm();                                   // one draw, shared by the cone and azimuth forms
+    let u = uT + noise * Math.hypot(sR, (sB + perKm) * sT);   // bladeRF: cone cosine (carries the mirror)
+    let az = azT + noise * (Math.hypot(sR, sB + perKm)) * R2D; // array: unambiguous azimuth (no mirror)
+    let kind = snr >= SNR_STRONG_DB - 3 ? 'strong' : 'weak';
+    if (steep > 0 && R() < STEEP_WILD_P_MAX * steep) { u = R.range(-1, 1); az = azT + R.range(-90, 90); kind = 'steep'; }
     else if (steep > 0.05) kind = 'steep';
     else if (cfg.refl && R() < REFLECT_P) {
-      const azT = azOf(vx, vy);
       const cands = W.reflectors.filter(h => {
         if (Math.hypot(h.x - ex, h.y - ey) > REFLECT_RANGE_M) return false;
         const dd = Math.abs(angDiff(azOf(h.x - px, h.y - py), azT)); return dd > 6 && dd < 70;
       });
-      if (cands.length) { const h = R.pick(cands); u = coneU(px, py, altZ, d, h.x, h.y, terrainAt(W, h.x, h.y)) + R.norm() * sR; kind = 'false'; }
+      if (cands.length) { const h = R.pick(cands), rAz = azOf(h.x - px, h.y - py); u = coneU(px, py, altZ, d, h.x, h.y, terrainAt(W, h.x, h.y)) + R.norm() * sR; az = rAz + R.norm() * sR * R2D; kind = 'false'; }
     }
-    return { u: clamp(u, -1, 1), sR, sB };
+    return { u: clamp(u, -1, 1), az: (az + 360) % 360, sR, sB };
   };
   const confusers = findConfusers(W, cfg, E), confNext = confusers.map(c => Rp.range(0, c.pe.intervalS));
   const pop = W.population.slice(0, cfg.density), popNext = pop.map(pe => Rp.range(0, pe.intervalS));
@@ -1842,26 +1861,27 @@ function flyFlight(W, cfg, ctx, k, plan) {
         if (q.type === 'ctrl') classifyBurst(R, tr, snr);
         // raw-strength layer (what a one-channel map shows before any fitting): strongest control-link SNR seen per cell
         if (q.type === 'ctrl') { const ci = clamp(Math.round(nX / GC), 0, GCX - 1) + clamp(Math.round(nY / GC), 0, GCY - 1) * GCX; if (snr > naive[ci]) naive[ci] = snr; }
-        // record a burst: cone-angle (two-channel), strength (always), with the believed position
-        const m = (cfg.method === 'rss') ? { u: 0, sR: 0, sB: 0 } : measure(snr, ep.x, ep.y, ep.z, d);
+        // record a burst: cone-angle (two-channel) or azimuth (array), strength (always), believed position
+        const m = (!rxt.array && cfg.method === 'rss') ? { u: 0, az: 0, sR: 0, sB: 0 } : measure(snr, ep.x, ep.y, ep.z, d);
         // Recorded strength = raw SNR + reading noise. The processor does NOT know the operator's
         // antenna pattern, so with aimed antennas their beam swing (gH) stays baked in as corruption;
         // with omni antennas gH is a near-constant that the unknown-power fit absorbs.
         const rssDb = snr + (cfg.realism ? R.norm() * RSS_MEAS_DB : 0);
         F.stored++;
-        addBurst(tr, { t, x: nX, y: nY, z: altZ, hx: d[0], hy: d[1], u: m.u, sR: Math.max(m.sR, 0.01), sB: m.sB, ns: navSig, rss: rssDb, kind: (cfg.method === 'rss') ? (snr >= SNR_STRONG_DB - 3 ? 'strong' : 'weak') : m.kind });
+        addBurst(tr, { t, x: nX, y: nY, z: altZ, hx: d[0], hy: d[1], u: m.u, az: m.az, sR: Math.max(m.sR, 0.01), sB: m.sB, ns: navSig, rss: rssDb, kind: (!rxt.array && cfg.method === 'rss') ? (snr >= SNR_STRONG_DB - 3 ? 'strong' : 'weak') : m.kind });
         if (tr.nDet === 1 && q.type === 'ctrl') say(t, `Recording ${tr.id}: ${q.src.sig}.`);
         // a confusable other-link burst occasionally filed under this target (clutter the sorter cannot remove)
-        const leakP = cfg.method === 'rss' ? LEAK_P_RSS : LEAK_P_BRG;
+        const rssOnly = !rxt.array && cfg.method === 'rss';
         if (cfg.realism && q.type === 'ctrl' && fpPass) {
           for (const cf of confusers) {
             if (!cf.targets.includes(i) || !txOn(W, cf.pe, t, k * 7 + 3)) continue;
             const hz = Math.hypot(px - cf.pe.x, py - cf.pe.y), sl = Math.hypot(hz, altZ - cf.z);
             const cs = cf.pe.pwr - 10 * PATHLOSS_EXP * Math.log10(Math.max(sl, 100) / 1000) - cfg.noise + degrade;
             if (cs < cfg.margin || R() > 1 / (1 + Math.exp(-(cs - DETECT_SNR_DB) / DETECT_SLOPE_DB))) continue;
-            const mu = cfg.method === 'rss' ? 0 : coneU(px, py, altZ, d, cf.pe.x, cf.pe.y, cf.z);
-            const confusable = cfg.method === 'rss' ? true : Math.abs(mu - m.u) < LEAK_U_TOL;
-            if (confusable && R() < leakP) { F.stored++; addBurst(tr, { t, x: nX, y: nY, z: altZ, hx: d[0], hy: d[1], u: mu + R.norm() * (m.sR || 0.05), sR: Math.max(m.sR, 0.05), sB: m.sB, ns: navSig, rss: cs + (cfg.realism ? R.norm() * RSS_MEAS_DB : 0), kind: 'mix' }); tr.cc.push(cf.pe.idx); }
+            const cfAz = azOf(cf.pe.x - px, cf.pe.y - py), mu = rssOnly ? 0 : coneU(px, py, altZ, d, cf.pe.x, cf.pe.y, cf.z);
+            // confusable = the other link arrives close enough in the measured quantity to be filed under the target
+            const confusable = rssOnly ? true : rxt.array ? Math.abs(angDiff(cfAz, m.az)) < rxt.leakTolDeg : Math.abs(mu - m.u) < rxt.leakTolCos;
+            if (confusable && R() < rxt.leakP) { F.stored++; addBurst(tr, { t, x: nX, y: nY, z: altZ, hx: d[0], hy: d[1], u: mu + R.norm() * (m.sR || 0.05), az: (cfAz + R.norm() * (m.sR || 0.05) * R2D + 360) % 360, sR: Math.max(m.sR, 0.05), sB: m.sB, ns: navSig, rss: cs + (cfg.realism ? R.norm() * RSS_MEAS_DB : 0), kind: 'mix' }); tr.cc.push(cf.pe.idx); }
           }
         }
       }
@@ -1909,13 +1929,18 @@ function priorGrid(W) {
   for (let j = 0; j < GCY; j++) { const fr = W.front((j + 0.5) * GC); for (let i = 0; i < GCX; i++) { const x = (i + 0.5) * GC; pr[j * GCX + i] = x < fr.f ? PRIOR_OWN : x < fr.e ? PRIOR_GREY : 0; } }
   W._pr = pr; return pr;
 }
-// cone-angle (bearing) negative-log-likelihood of a cell, robustly capped
-function brgCost(bins, cx, cy, cz) {
+// Bearing negative-log-likelihood of a cell, robustly capped. Two forms:
+//  - cone mode (bladeRF, 2 elements): compares the cone cosine to the fuselage axis; this is symmetric
+//    about the track, so a mirror lobe appears in the posterior until crossing headings break it.
+//  - azimuth mode (coherent array): compares a true azimuth, which has no left/right ambiguity.
+function brgCost(bins, cx, cy, cz, coneMode) {
   let c = 0;
   for (const b of bins) {
     const vx = cx - b.x, vy = cy - b.y, vz = cz - b.z, r = Math.hypot(vx, vy, vz) || 1;
-    const uT = (vx * b.hx + vy * b.hy) / r;
-    const sg = Math.hypot(b.sR, b.sB) || 0.02, z = (b.u - uT) / sg;
+    const sg = Math.hypot(b.sR, b.sB) || 0.02;
+    let z;
+    if (coneMode) { const uT = (vx * b.hx + vy * b.hy) / r; z = (b.u - uT) / sg; }
+    else { z = (angDiff(b.az, azOf(vx, vy)) * D2R) / sg; }
     c += Math.min(z * z, CAP_Z * CAP_Z) * b.w;
   }
   return c;
@@ -1930,7 +1955,7 @@ function rssCost(bins, cx, cy, cz) {
   return c;
 }
 // Evaluate a posterior over a rectangular grid; returns {prob, max, mi, norm}
-function evalGrid(bins, useBrg, useRss, prior, x0, y0, res, nx, ny, ctFn) {
+function evalGrid(bins, useBrg, useRss, prior, x0, y0, res, nx, ny, ctFn, coneMode) {
   const n = nx * ny, logp = new Float64Array(n); let mx = -Infinity;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const cx = x0 + (i + 0.5) * res, cy = y0 + (j + 0.5) * res;
@@ -1939,7 +1964,7 @@ function evalGrid(bins, useBrg, useRss, prior, x0, y0, res, nx, ny, ctFn) {
     if (pr0 <= PRIOR_OWN + 0.01) { logp[k] = -1e9; continue; }
     const cz = ctFn(cx, cy);
     let L = pr0;
-    if (useBrg) L -= 0.5 * brgCost(bins, cx, cy, cz);
+    if (useBrg) L -= 0.5 * brgCost(bins, cx, cy, cz, coneMode);
     if (useRss) L -= 0.5 * rssCost(bins, cx, cy, cz);
     logp[k] = L; if (L > mx) mx = L;
   }
@@ -1975,14 +2000,15 @@ function fieldEllipse(prob, nx, ny, x0, y0, res) {
 
 // Solve one emitter from its accumulated bins. Returns a fix or a reason it failed.
 function solveEmitter(W, cfg, tr, bins) {
-  const useBrg = cfg.method !== 'rss', useRss = cfg.method !== 'brg';
+  const arr = cfg.rx === 'array';
+  const useBrg = arr || cfg.method !== 'rss', useRss = !arr && cfg.method !== 'brg', coneMode = !arr;
   const ct = coarseTerrain(W), pr = priorGrid(W);
   const ctFn = (x, y) => ct[clamp(Math.round(y / GC - 0.5), 0, GCY - 1) * GCX + clamp(Math.round(x / GC - 0.5), 0, GCX - 1)];
   const prFn = (x, y) => pr[clamp(Math.round(y / GC - 0.5), 0, GCY - 1) * GCX + clamp(Math.round(x / GC - 0.5), 0, GCX - 1)];
   // distinct recording geometry: how many different headings and positions the bins come from
   const hset = new Set(), pset = new Set();
   for (const b of bins) { hset.add(Math.round(azOf(b.hx, b.hy) / 15)); pset.add(Math.round(b.x / 3000) + ':' + Math.round(b.y / 3000)); }
-  const coarse = evalGrid(bins, useBrg, useRss, prFn, 0, 0, GC, GCX, GCY, ctFn);
+  const coarse = evalGrid(bins, useBrg, useRss, prFn, 0, 0, GC, GCX, GCY, ctFn, coneMode);
   // peak and how much probability sits with it vs a competing lobe (mirror / ghost)
   const pk = coarse.mi, pkx = (pk % GCX + 0.5) * GC, pky = ((pk / GCX | 0) + 0.5) * GC;
   let mainMass = 0, ghost = null, gm = 0, gx = 0, gy = 0, gmass = 0;
@@ -1999,7 +2025,7 @@ function solveEmitter(W, cfg, tr, bins) {
   // Refine the peak and the tight part with the fine grid when the belief is unimodal
   const span = 9000, res = Math.max(FINE_MIN_RES, span / FINE_N);
   const fx0 = clamp(pkx - span / 2, 0, MAP_W - span), fy0 = clamp(pky - span / 2, 0, MAP_H - span);
-  const fine = evalGrid(bins, useBrg, useRss, prFn, fx0, fy0, res, FINE_N, FINE_N, ctFn);
+  const fine = evalGrid(bins, useBrg, useRss, prFn, fx0, fy0, res, FINE_N, FINE_N, ctFn, coneMode);
   const fpk = fine.mi, fpkx = fx0 + (fpk % FINE_N + 0.5) * res, fpky = fy0 + ((fpk / FINE_N | 0) + 0.5) * res;
   // The ellipse is the FULL-sector posterior covariance about the peak. When the belief is unimodal it is
   // the main lobe's spread; when a mirror/ghost lobe survives it stretches to cover it — honest either way.
@@ -2009,7 +2035,7 @@ function solveEmitter(W, cfg, tr, bins) {
   // bursts, so they set a hard minimum on the ellipse (same device as the live sim's covariance floor).
   let sr = []; for (const bb of bins) sr.push(Math.hypot(fpkx - bb.x, fpky - bb.y)); sr.sort((x, y) => x - y);
   const medR = sr.length ? sr[sr.length >> 1] : 3000;
-  const sysDeg = useBrg ? Math.hypot(cfg.realism ? ATT_ERR_DEG : 0.3, REAL_RESID_DEG, 0.5) * IFM_SIGMA_MULT : 5;
+  const sysDeg = useBrg ? Math.hypot(cfg.realism ? ATT_ERR_DEG : 0.3, REAL_RESID_DEG, 0.5) * (arr ? ARRAY.sigMult : IFM_SIGMA_MULT) : 5;
   const floorM = medR * sysDeg * D2R + (useBrg ? 0 : 600);    // strength-only: a wide floor, range from power is weak
   const el = { x: fpkx, y: fpky, a: Math.hypot(a0, floorM) * T_CORR, b: Math.hypot(b0, floorM) * T_CORR, ang };
   return { coarse, fine: { prob: fine.prob, x0: fx0, y0: fy0, res, n: FINE_N }, el, mainMass, ghost, nHdg: hset.size, nPos: pset.size, pkx: fpkx, pky: fpky };
@@ -2133,68 +2159,75 @@ function runCampaign(W, cfg) {
 window.BATCH = {
  "rows": [
   {
-   "name": "Live-tasking sim (coherent AoA)",
+   "name": "Live-tasking sim (coherent array + 180° arc)",
    "loc": "101 fixes",
    "inside": 100,
    "err": "183 m",
    "ghost": "—"
   },
   {
-   "name": "Heat map · bearings · grid",
-   "loc": "39/75",
-   "inside": 86,
-   "err": "669 m",
+   "name": "Heat map · coherent array · grid (no arc)",
+   "loc": "30/75",
+   "inside": 82,
+   "err": "667 m",
    "ghost": 17
   },
   {
-   "name": "Heat map · combined · grid",
+   "name": "Heat map · bearings · grid",
    "loc": "33/75",
-   "inside": 83,
-   "err": "622 m",
+   "inside": 88,
+   "err": "601 m",
+   "ghost": 16
+  },
+  {
+   "name": "Heat map · combined · grid",
+   "loc": "31/75",
+   "inside": 81,
+   "err": "735 m",
    "ghost": 19
   },
   {
    "name": "Heat map · combined · multi-angle",
-   "loc": "32/75",
-   "inside": 96,
-   "err": "567 m",
-   "ghost": 20
+   "loc": "33/75",
+   "inside": 93,
+   "err": "603 m",
+   "ghost": 25
   },
   {
    "name": "Heat map · combined · plan between flights",
-   "loc": "44/75",
-   "inside": 80,
-   "err": "700 m",
-   "ghost": 18
+   "loc": "39/75",
+   "inside": 75,
+   "err": "629 m",
+   "ghost": 17
   },
   {
    "name": "Heat map · strength only · aimed enemy",
-   "loc": "5/75",
-   "inside": 40,
-   "err": "5212 m",
+   "loc": "4/75",
+   "inside": 64,
+   "err": "4948 m",
    "ghost": 27
   },
   {
    "name": "Heat map · strength only · omni enemy",
-   "loc": "21/75",
-   "inside": 83,
-   "err": "1251 m",
-   "ghost": 22
+   "loc": "20/75",
+   "inside": 78,
+   "err": "1865 m",
+   "ghost": 23
   },
   {
    "name": "Heat map · combined · single pass",
-   "loc": "14/75",
+   "loc": "12/75",
    "inside": 100,
-   "err": "349 m",
-   "ghost": 24
+   "err": "332 m",
+   "ghost": 28
   }
  ],
  "note": "8 maps × 3 altitudes, Frontline RF on, teams relocating. \"Located\" counts control stations pinned to within ±4 km across the campaign; the live-tasking sim's figure is its per-mission located fixes. Inside-95% is over all genuine fixes (not only the tight ones), so the located bar does not flatter it. Error is vs. the simulated truth. All numbers are modelled, not field results.",
  "prose": [
-  "The live-tasking sim locates more, tighter, and in one flight — but only because it carries a coherent array and decides in the air. That is the price: a 183 m median fix needs multi-channel direction finding and real-time compute on the aircraft.",
-  "The heat map gives most of that up for a cheaper, record-only bladeRF. Combined (bearings + strength) pins 33 of 75 stations across the grid at a 622 m median, with the truth inside the 95% ellipse 83% of the time — honest, if looser.",
-  "Strength alone is the warning: against aimed antennas it locates 5/75, and the few fixes it does make are wrong. Give the enemy stock omni antennas and the same method locates 21/75 at 83% inside. That gap is the whole case for the second channel.",
-  "Flying more angles beats flying more lines: multi-angle (32/75) and planning each route between flights (44/75) both beat a single pass (14/75), because crossing headings are what resolve the bearing's left/right mirror."
+  "The arc, not the receiver, is the live-tasking sim's real advantage. Give the same coherent array the heat map's predefined flights with no 180° arc and no in-air tasking, and it falls from 101 fixes at 183 m to 30/75 at 667 m. Flying straight lines and processing later is what costs you, far more than the choice of receiver.",
+  "Held to the same crossing-grid flights, the array and the bladeRF come out close (30/75 at 667 m vs 33/75 at 601 m). The array has fewer ghosts — five channels give a true azimuth with no mirror — but it is not tighter here and locates no more, because it sweeps ~3× slower (far fewer bursts per fix) and is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears. The array’s no-mirror edge pays off on single or parallel plans, where crossing headings are missing and the bladeRF cannot resolve its mirror.",
+  "Strength alone is the warning: against aimed antennas it locates 4/75, and the few fixes it makes are wrong. Give the enemy stock omni antennas and the same method locates 20/75 at 78% inside. That gap is the case for the second channel.",
+  "Flying more angles beats flying more lines: multi-angle (33/75) and planning each route between flights (39/75) both beat a single pass (12/75), because crossing headings are what resolve the bearing's left/right mirror — and the cheap bladeRF leans on that hardest."
  ]
 };
 /* ===================================================================== HEAT-MAP UI */
@@ -2203,7 +2236,7 @@ const PROC_S = 150, GAP_S = 320;          // replay seconds spent "processing" a
 const HEAT_GAMMA = 0.48;
 
 const state = {
-  seed: 'ALPHA1', tab: 0, method: 'both', plan: 'grid', planning: 'fixed', altM: 2000, nFlights: 4,
+  seed: 'ALPHA1', tab: 0, rx: 'bladerf', method: 'both', plan: 'grid', planning: 'fixed', altM: 2000, nFlights: 4,
   memory: 'all', omni: false, moveP: 35, density: 150, realism: true, truth: true,
   showPaths: true, showCover: false, showNaive: false, showGhost: true, showSpectrum: true,
   playing: !REDUCED, speed: 160, t: 0, hover: -1, pin: -1, follow: false,
@@ -2214,7 +2247,7 @@ let world = null, camp = null, timeline = null, cmpOldSim = null;
 function cfg() {
   return { refl: true, realism: state.realism, attDeg: ATT_ERR_DEG, noise: 2, beam: BEAM_WIDTH_DEG,
     density: state.density, margin: 4, convTolM: 4000, moveP: state.moveP / 100, nFlights: state.nFlights,
-    method: state.method, plan: state.plan, planning: state.planning, memory: state.memory, omni: state.omni, altM: state.altM };
+    rx: state.rx, method: state.method, plan: state.plan, planning: state.planning, memory: state.memory, omni: state.omni, altM: state.altM };
 }
 function buildTimeline() {
   const segs = []; let t = 0;
@@ -2493,42 +2526,49 @@ function updatePanel() {
 }
 
 /* ---------- compare tab ---------- */
+let cmpA = null, cmpB = null, cmpKey = '';   // cached array/bladeRF campaigns for the current settings
+function cmpConfig(rx) { return { refl: true, realism: state.realism, attDeg: ATT_ERR_DEG, noise: 2, beam: BEAM_WIDTH_DEG, density: state.density, margin: 4, convTolM: 4000, moveP: state.moveP / 100, nFlights: state.nFlights, rx, method: rx === 'array' ? 'brg' : (state.method === 'rss' ? 'both' : state.method), plan: state.plan, planning: state.planning, memory: state.memory, omni: state.omni, altM: state.altM }; }
+function cmpSummary(c) { const rep = c.perFlight[c.perFlight.length - 1].report.filter(r => r.type === 'ctrl'); const loc = rep.filter(r => r.located); const es = loc.map(r => r.err).filter(isFinite).sort((a, b) => a - b); return { loc: loc.length, ghost: rep.filter(r => r.ghost && !r.located).length, med: es.length ? es[es.length >> 1] : NaN, targets: c.summary.targets }; }
 function updateCompare() {
-  $('cmpSeed').textContent = state.seed;
+  $('cmpSeed').textContent = `${state.seed} · ${camp.nF} flights · ${state.altM} m · ${PLANS.find(p => p.id === state.plan).name.toLowerCase()}`;
   renderDiffLists();
-  // old sim (pinpoint) on this seed
+  const key = [state.seed, state.plan, state.planning, state.nFlights, state.altM, state.realism, state.moveP, state.density, state.omni, state.method].join('|');
+  if (key !== cmpKey) { cmpA = runCampaign(world, cmpConfig('array')); cmpB = runCampaign(world, cmpConfig('bladerf')); cmpKey = key; }
   if (!cmpOldSim) { const ocfg = { refl: true, realism: state.realism, attDeg: ATT_ERR_DEG, noise: 2, beam: BEAM_WIDTH_DEG, density: state.density, margin: 4, convTolM: 5000, persistWin: 3, rx: 2, alt: 1 }; cmpOldSim = simulate(world, ocfg, 1); }
-  drawMini($('cmpOld'), 'old'); drawMini($('cmpNew'), 'new');
-  const oldLoc = cmpOldSim.tracks.filter(tr => { const sn = tr.snaps[tr.snaps.length - 1]; return isLocated(tr, sn, cmpOldSim.pipe.params) && tr.e.type !== 'video'; });
-  const oldCtrl = oldLoc.filter(tr => tr.e.type === 'ctrl').length;
-  $('cmpOldP').textContent = `One mission, live tasking. ${oldLoc.length} transmitters located (${oldCtrl} control links), each a crossed-bearing fix made in the air. Needs a coherent receiver.`;
-  const lastRep = camp.perFlight[camp.perFlight.length - 1].report.filter(r => r.type === 'ctrl');
-  const nLoc = lastRep.filter(r => r.located).length, ng = lastRep.filter(r => r.ghost && !r.located).length;
-  $('cmpNewP').textContent = `${camp.nF} flights, processed after landing. ${nLoc} of ${camp.summary.targets} control stations pinned${ng ? `, ${ng} still ambiguous (ghost)` : ''}. ${METHODS[state.method].name} method, ${PLANS.find(p => p.id === state.plan).name.toLowerCase()}.`;
+  drawMini($('cmpOld'), cmpA, COL.teal); drawMini($('cmpNew'), cmpB, COL.amber);
+  const A = cmpSummary(cmpA), B = cmpSummary(cmpB);
+  $('cmpOldP').textContent = `${A.loc} of ${A.targets} control stations located${A.ghost ? `, ${A.ghost} ghost` : ''}${isFinite(A.med) ? ` · median ${fmtM(A.med)}` : ''}. No mirror, tighter bearings — but blind above 1.77 GHz and slower to sweep.`;
+  $('cmpNewP').textContent = `${B.loc} of ${B.targets} control stations located${B.ghost ? `, ${B.ghost} ghost` : ''}${isFinite(B.med) ? ` · median ${fmtM(B.med)}` : ''}. Hears 2.4/5.8 GHz and sweeps faster, but a 2-element mirror that crossing headings must resolve.`;
+  // live-tasking sim reference (the actual other artifact: arc + in-air tasking)
+  const oldLoc = cmpOldSim.tracks.filter(tr => { const sn = tr.snaps[tr.snaps.length - 1]; return isLocated(tr, sn, cmpOldSim.pipe.params) && tr.e.type === 'ctrl'; });
+  const oe = oldLoc.map(tr => { const sn = tr.snaps[tr.snaps.length - 1], tp = emPos(world, tr.e, sn.t); return Math.hypot(sn.fix.x - tp.x, sn.fix.y - tp.y); }).sort((a, b) => a - b);
+  $('cmpRef').innerHTML = `<b>Reference — the live-tasking sim</b> (coherent array + 180° arc + in-air tasking, one mission) locates ${oldLoc.length} control links here at a ${oe.length ? fmtM(oe[oe.length >> 1]) : '–'} median. That is the arc's doing, not the receiver's: give the same array these predefined flights with no arc (left pane) and it drops to ${A.loc}. The arc is what you give up by recording and mapping later.`;
   renderBatch(); renderCmpProse();
   syncControls();
 }
-function drawMini(cv, which) {
+function drawMini(cv, cres, col) {
   const c = cv.getContext('2d'), W = cv.width, H = cv.height;
   const s = Math.min(W / MAP_W, H / MAP_H), ox = (W - MAP_W * s) / 2, oy = (H - MAP_H * s) / 2;
   const X = x => ox + x * s, Y = y => oy + y * s;
   c.fillStyle = COL.ground; c.fillRect(0, 0, W, H);
   c.imageSmoothingEnabled = true; c.drawImage(world.base, X(0), Y(0), MAP_W * s, MAP_H * s);
+  const hc = heatCanvas(cres.perFlight[cres.perFlight.length - 1].belief); if (hc) c.drawImage(hc, X(0), Y(0), MAP_W * s, MAP_H * s);
   const fp = arr => { c.beginPath(); for (let k = 0; k < arr.length; k++) { const y = k * FRONT_STEP; k ? c.lineTo(X(arr[k]), Y(y)) : c.moveTo(X(arr[k]), Y(y)); } };
   fp(world.ff); c.strokeStyle = rgba(COL.teal, 0.7); c.lineWidth = 1.3; c.stroke();
   fp(world.fe); c.strokeStyle = rgba(COL.red, 0.7); c.setLineDash([6, 4]); c.stroke(); c.setLineDash([]);
-  if (which === 'new') {
-    const hc = heatCanvas(camp.perFlight[camp.perFlight.length - 1].belief); if (hc) c.drawImage(hc, X(0), Y(0), MAP_W * s, MAP_H * s);
-    for (const r of camp.perFlight[camp.perFlight.length - 1].report) { if (r.type !== 'ctrl' || !r.located) continue; c.beginPath(); c.ellipse(X(r.el.x), Y(r.el.y), Math.max(r.el.a * s, 2), Math.max(r.el.b * s, 2), r.el.ang, 0, 2 * Math.PI); c.setLineDash([4, 3]); c.strokeStyle = rgba(COL.amber, 0.95); c.lineWidth = 1.4; c.stroke(); c.setLineDash([]); }
-  } else {
-    for (const tr of cmpOldSim.tracks) { const sn = tr.snaps[tr.snaps.length - 1]; if (!isLocated(tr, sn, cmpOldSim.pipe.params) || tr.e.type === 'video') continue; const f = sn.fix, K = tr.iso ? ISO_K[tr.iso] : 1; c.beginPath(); c.ellipse(X(f.x), Y(f.y), Math.max(f.a * K * s, 2), Math.max(f.b * K * s, 2), f.ang, 0, 2 * Math.PI); c.setLineDash([4, 3]); c.strokeStyle = rgba(TYPE_COL[tr.e.type], 0.95); c.lineWidth = 1.4; c.stroke(); c.setLineDash([]); c.beginPath(); c.moveTo(X(f.x) - 3, Y(f.y)); c.lineTo(X(f.x) + 3, Y(f.y)); c.moveTo(X(f.x), Y(f.y) - 3); c.lineTo(X(f.x), Y(f.y) + 3); c.strokeStyle = '#fff'; c.lineWidth = 1; c.stroke(); }
+  for (const r of cres.perFlight[cres.perFlight.length - 1].report) {
+    if (r.type !== 'ctrl') continue;
+    if (r.ghost && !r.located) { c.beginPath(); c.arc(X(r.ghost.x), Y(r.ghost.y), 4, 0, 2 * Math.PI); c.setLineDash([2, 2]); c.strokeStyle = rgba(COL.red, 0.8); c.lineWidth = 1.1; c.stroke(); c.setLineDash([]); }
+    if (!r.located) continue;
+    c.beginPath(); c.ellipse(X(r.el.x), Y(r.el.y), Math.max(r.el.a * s, 2), Math.max(r.el.b * s, 2), r.el.ang, 0, 2 * Math.PI); c.setLineDash([4, 3]); c.strokeStyle = rgba(col, 0.95); c.lineWidth = 1.4; c.stroke(); c.setLineDash([]);
+    c.beginPath(); c.moveTo(X(r.el.x) - 3, Y(r.el.y)); c.lineTo(X(r.el.x) + 3, Y(r.el.y)); c.moveTo(X(r.el.x), Y(r.el.y) - 3); c.lineTo(X(r.el.x), Y(r.el.y) + 3); c.strokeStyle = '#fff'; c.lineWidth = 1; c.stroke();
   }
   // truth markers
   for (const e of world.emitters) { if (e.type === 'video') continue; c.save(); c.translate(X(e.x), Y(e.y)); if (e.type === 'radio') { c.strokeStyle = rgba(TYPE_COL[e.type], 0.8); c.lineWidth = 1.2; c.strokeRect(-3, -3, 6, 6); } else { c.rotate(Math.PI / 4); c.fillStyle = rgba(TYPE_COL[e.type], 0.85); c.fillRect(-3, -3, 6, 6); } c.restore(); }
 }
 function renderDiffLists() {
-  $('diffOld').innerHTML = ['Locates in the air, during one mission', 'Needs a coherent receiver (KrakenSDR / USRP) for bearings', 'Diverts to high-value targets in real time', 'One flight, nothing kept between missions', 'Emitters never move mid-mission'].map(x => `<li>${x}</li>`).join('');
-  $('diffNew').innerHTML = ['Records in the air, locates after landing', 'Runs on a bladeRF (2 channels) — or 1 channel for strength only', 'Routes are fixed, or planned between flights from the heat', 'Several flights add up into one heat map', 'Teams relocate and retune between flights'].map(x => `<li>${x}</li>`).join('');
+  $('diffOld').innerHTML = ['5 coherent channels → true azimuth, no left/right mirror', 'Tighter bearings; one pass can locate', 'Blind above 1.77 GHz — misses 2.4 GHz operators', 'Slower sweep → fewer bursts per flight', 'Bulkier and pricier (~$900, ~400 g)'].map(x => `<li>${x}</li>`).join('');
+  $('diffNew').innerHTML = ['2 channels → cone angle with a left/right mirror', 'Needs crossing headings to resolve the mirror', 'Hears 2.4 / 5.8 GHz — finds more operators', 'Faster sweep → more bursts per flight', 'Cheap and light (~$540, ~90 g)'].map(x => `<li>${x}</li>`).join('');
 }
 function renderBatch() {
   const B = window.BATCH || null;
@@ -2547,7 +2587,12 @@ function segButtons(id, opts, cur, onPick) {
 }
 function syncControls() {
   $('seed').value = state.seed;
+  segButtons('rx', [{ v: 'bladerf', l: 'bladeRF · 2-ch' }, { v: 'array', l: 'Coherent array · 5-ch' }], state.rx, v => { state.rx = v; rebuild(true); afterChange(); });
   segButtons('method', [{ v: 'brg', l: 'Bearings' }, { v: 'rss', l: 'Strength' }, { v: 'both', l: 'Combined' }], state.method, v => { state.method = v; rebuild(true); afterChange(); });
+  const arr = state.rx === 'array';
+  $('rxVal').textContent = arr ? ARRAY.sub : `${BRF.ibw} · ≤6 GHz · 2-ch`;
+  $('rxNote').textContent = arr ? 'Five coherent channels give a true azimuth — no left/right mirror, so one pass can locate. But it sweeps slower (fewer bursts) and is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears.' : 'Two channels off one clock: a cone angle with a left/right mirror that crossing headings resolve. Wideband and fast — hears 2.4/5.8 GHz.';
+  $('methodRow').hidden = arr;
   segButtons('plan', PLANS.map(p => ({ v: p.id, l: p.name })), state.plan, v => { state.plan = v; state.nFlights = PLANS.find(p => p.id === v).flights.length; rebuild(true); afterChange(); });
   segButtons('planning', [{ v: 'fixed', l: 'Fixed upfront' }, { v: 'adaptive', l: 'Plan between flights' }], state.planning, v => { state.planning = v; rebuild(true); afterChange(); });
   segButtons('alt', ALT_CHOICES.map(a => ({ v: a, l: (a / 1000) + ' km' })), state.altM, v => { state.altM = +v; rebuild(true); afterChange(); });
@@ -2598,13 +2643,15 @@ function fillStatic() {
     <p>This page is the companion to the live RF Recon Simulator. Same modelled battlefield, same physics constants; a different concept of operations. Every number is a modelled estimate, not real RF data.</p>
     <p><strong>Record now, map later.</strong> The drone flies predefined routes and only records: for each burst it stores the frequency, a strength reading, a two-channel cone-angle (unless the method is strength-only), and the aircraft's believed position. Nothing is located in the air. After landing, the recordings become one probability grid per emitter, and the grids add into the heat map.</p>
     <p><strong>bladeRF, two channels.</strong> A ${BRF.name} has two receive channels sharing one clock, so it measures a cone angle to the fuselage axis — accurate off the wing, ambiguous left/right of track, and the phase has to be re-checked after each retune. One pass leaves a mirror ghost; flying different headings resolves it. On one channel it is only a strength map.</p>
+    <p><strong>Coherent array (the Receiver toggle).</strong> Switch the receiver to a five-channel coherent circular array (KrakenSDR-class) and it flies the identical predefined flights, so the comparison isolates the receiver alone. The array gives a true azimuth — no mirror, tighter bearings, fewer ghosts — but it sweeps slower (fewer bursts) and is blind above 1.77 GHz, so it never hears the 2.4 GHz operators. The Compare tab runs both on one map; the live-tasking sim (coherent array plus the 180° arc) sits there as a reference, to show the arc is the bigger advantage, not the receiver.</p>
     <p><strong>Three methods.</strong> <em>Bearings</em> cross cone-angles across flights. <em>Strength</em> fits range to the 1/r falloff with the operator's power unknown — which works against omni antennas but fails against aimed ones, because the signal peaks where they point, not where they sit. <em>Combined</em> lets bearings carry the fix and strength trim the ambiguity.</p>
     <p><strong>Between flights.</strong> Teams relocate and some change link settings, so a track can break and the heat has to be rebuilt. "Memory" sets how fast old recordings are forgotten. "Planning" is the honest version of your original idea: with it on, each route after the first aims at whatever the heat is still unsure about; off, every route is fixed before takeoff.</p>
     <p><strong>What is still not modelled:</strong> a validated hop fingerprint, 3D geolocation, fibre-optic FPV drones (no RF), real two-element calibration and mutual coupling, weather, and endurance or survivability of the aircraft. And as in the live sim, error-vs-truth is only knowable because the simulator placed the emitters.</p>`;
 
   $('constTable').innerHTML = [
-    ['Receiver', `${BRF.name} · ${BRF.ibw} IBW · ${BRF.rxLoMHz} MHz–6 GHz · 2 ch · ${BRF.grams} g · ${BRF.price}`],
-    ['Revisit (2 ch / 1 ch)', `${REVISIT_BRG_S} / ${REVISIT_RSS_S} s`],
+    ['Receiver A', `${BRF.name} · ${BRF.ibw} IBW · ${BRF.rxLoMHz} MHz–6 GHz · 2 ch · ${BRF.grams} g · ${BRF.price}`],
+    ['Receiver B', `${ARRAY.name} · ${ARRAY.sub} · ${ARRAY.grams} g · ${ARRAY.price}`],
+    ['Revisit (bladeRF / array)', `${REVISIT_BRG_S} / ${ARRAY.revisitS} s`],
     ['Cone-angle error vs an array', `×${IFM_SIGMA_MULT} (two elements)`],
     ['Strength reading / model spread', `±${RSS_MEAS_DB} / ±${RSS_MODEL_DB} dB`],
     ['Omni vs aimed antenna gain', `${OMNI_GAIN_DB} dB flat vs up to 0 dB aimed`],

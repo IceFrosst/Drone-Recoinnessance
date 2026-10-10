@@ -113,7 +113,7 @@ Where the first simulator locates emitters **in the air, during one mission**, w
 ## What it shows
 
 - **Tab 1, Campaign:** fly a sequence of predefined routes over one map. Each flight only records; when it lands, the recordings become one probability grid per emitter, and the grids add into the heat map. The next flight is then flown (or, with planning on, chosen from the heat so far). Scrub the timeline through flights, the between-flight processing, and the gaps, or jump straight to the final heat map with **End**. A **number-of-flights** slider (1–10) adds passes beyond the chosen plan; a **background-spectrum** toggle draws the ~150 other emitters the sorter must cut through; and a **Final result** panel lists each station's probability of being a control link and its location box once the campaign completes.
-- **Tab 2, Compare:** the same seed solved both ways, side by side — the live-tasking sim's crossed-bearing fixes against this one's heat map — plus a batch table across 8 maps and every setting.
+- **Tab 2, Compare:** the same seed, same predefined flights, solved with two receivers side by side — a 5-channel **coherent array** against the **bladeRF** — so the gap is the receiver alone. The live-tasking sim (coherent array plus the 180° arc) sits there as a reference, to show the arc is the bigger advantage. Plus a batch table across 8 maps and every setting.
 
 ## The receiver: bladeRF 2.0 micro xA4
 
@@ -122,6 +122,8 @@ The module is a bladeRF 2.0 micro xA4 (70 MHz–6 GHz, 56 MHz instantaneous band
 - **Bearings** — cross the two-channel cone angles across flights. One straight pass leaves a left/right mirror; crossing headings from different flights resolve it.
 - **Strength** — fit range to the 1/rⁿ falloff with the operator's transmit power unknown. This works against omni antennas and **fails against aimed ones**, because the signal peaks where the operator points their patch/yagi, not where they sit.
 - **Combined** — bearings carry the fix, strength trims the ambiguity.
+
+A **Receiver** toggle swaps the bladeRF for a 5-channel **coherent array** (KrakenSDR-class) that flies the identical predefined flights, so the choice isolates the receiver. The array gives a true azimuth — no left/right mirror, tighter bearings, fewer ghosts — but it sweeps slower (fewer bursts) and is blind above 1.77 GHz, so it never hears the 2.4 GHz operators the bladeRF catches. Held to the same flights the two come out close (see the batch table): the array is tighter per fix, the bladeRF finds as many or more because it hears the whole band. The big gap in the batch table is the **live-tasking sim**, and that gap is the 180° arc and in-air tasking, not the receiver — give the same array these predefined flights with no arc and it falls to the array row.
 
 ## Record now, map later
 
@@ -145,21 +147,22 @@ All numbers are modelled, not field results. Across 8 maps × 3 altitudes, Front
 
 | Setup | Located | Inside 95% | Median error | Ghosts |
 |---|---|---|---|---|
-| Live-tasking sim (coherent AoA) | 101 fixes | 100% | 183 m | — |
-| Heat map · bearings · grid | 39/75 | 86% | 669 m | 17 |
-| Heat map · combined · grid | 33/75 | 83% | 622 m | 19 |
-| Heat map · combined · multi-angle | 32/75 | 96% | 567 m | 20 |
-| Heat map · combined · plan between flights | 44/75 | 80% | 700 m | 18 |
-| Heat map · strength only · aimed enemy | 5/75 | 40% | 5212 m | 27 |
-| Heat map · strength only · omni enemy | 21/75 | 83% | 1251 m | 22 |
-| Heat map · combined · single pass | 14/75 | 100% | 349 m | 24 |
+| Live-tasking sim (coherent array + 180° arc) | 101 fixes | 100% | 183 m | — |
+| Heat map · coherent array · grid (no arc) | 30/75 | 82% | 667 m | 17 |
+| Heat map · bearings · grid | 33/75 | 88% | 601 m | 16 |
+| Heat map · combined · grid | 31/75 | 81% | 735 m | 19 |
+| Heat map · combined · multi-angle | 33/75 | 93% | 603 m | 25 |
+| Heat map · combined · plan between flights | 39/75 | 75% | 629 m | 17 |
+| Heat map · strength only · aimed enemy | 4/75 | 64% | 4948 m | 27 |
+| Heat map · strength only · omni enemy | 20/75 | 78% | 1865 m | 23 |
+| Heat map · combined · single pass | 12/75 | 100% | 332 m | 28 |
 
 Reading it:
 
-- The live-tasking sim locates more, tighter, in one flight — because it carries a coherent receiver and decides in the air. That capability is the whole cost difference.
-- The heat map gives most of that up for a record-only bladeRF and still pins most control stations, honestly (the truth falls inside the 95% ellipse most of the time on crossing-heading plans). A minority of fixes are **confidently wrong** — mostly single-heading plans whose mirror never got resolved — a real failure mode, shown on purpose, as in the live sim.
-- **Strength alone is the warning.** Against aimed antennas it barely locates anything; give the enemy stock omni antennas and the same method works. That gap is the entire case for the second channel.
-- **Flying more angles beats flying more lines.** Multi-angle and between-flight planning both beat parallel lines and a single pass, because crossing headings are what resolve the bearing mirror.
+- **The arc, not the receiver, is the live-tasking sim's real advantage.** Give the same coherent array the heat map's predefined flights with no 180° arc and no in-air tasking (the "coherent array · grid" row) and it falls from 101 fixes at 183 m to 30/75 at 667 m. Flying straight lines and processing later is what costs you — far more than which receiver you fly.
+- **Array vs bladeRF, held to the same flights, is close.** On the crossing grid the array is not tighter and locates no more, because it sweeps ~3× slower (fewer bursts per fix) and is blind above 1.77 GHz, missing the 2.4 GHz operators. Its no-mirror edge pays off on single/parallel plans, where the bladeRF cannot resolve its mirror. So the receiver choice depends on the flight plan, not the other way round.
+- **Strength alone is the warning.** Against aimed antennas it barely locates anything and the few fixes are wrong; give the enemy stock omni antennas and the same method works. That gap is the entire case for the second channel.
+- **Flying more angles beats flying more lines.** Multi-angle and between-flight planning both beat parallel lines and a single pass, because crossing headings are what resolve the bearing mirror. A minority of fixes stay **confidently wrong** — mostly single-heading plans whose mirror never got resolved — a real failure mode, shown on purpose, as in the live sim.
 
 ## Honest limits specific to this page
 
