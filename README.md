@@ -61,6 +61,16 @@ One honest limit of the model: the located fix itself is computed from the targe
 - **GNSS-denial belt.** A broad belt runs along and behind the enemy line (distinct from the local comms-jamming bubbles around EW nodes). Inside it the drone dead-reckons and its own position drifts, which is folded into every fix taken there. This mirrors the real front, where GPS denial is near-continuous over wide areas while communications jamming is localized.
 - **Frequency hopping and retune.** Control links hop across their whole band (not a narrow jitter), which is why the deinterleaver cannot sort them by frequency. Under Frontline RF, a share of operators retune (change hop rate / band) mid-mission, breaking the track so the emitter has to be re-acquired as a new one — the reactive adversary.
 
+## Receiver and the scan trade-off
+
+The module's binding constraint is **instantaneous bandwidth (IBW)** — how much spectrum the coherent receiver sees at once. A KrakenSDR-class receiver sees ~2.4 MHz, so it cannot watch the whole 400 MHz–2.3 GHz front at once; it **sweeps**, and the sweep sets how often each frequency is revisited.
+
+The Receiver control exposes this as three tiers:
+- **KrakenSDR** — 5-channel coherent, ~2.4 MHz IBW, ≤1.77 GHz. Revisits each frequency ~every 6 s and is blind above 1.77 GHz (no 2.4 GHz).
+- **Wideband mid / Wideband** — wider-IBW coherent receivers (USRP-class), covering up to 3 or 6 GHz and revisiting every ~2–2.5 s.
+
+Upgrading does three things, visible live: it **scans faster** (shorter revisit → more bursts caught → tighter fixes sooner), it **hears more of the band** (2.4 and 5.8 GHz come into coverage, so operators that were invisible become locatable), and it therefore **classifies sooner** (more bursts feed the fingerprint). The cost is SWaP — size, weight, power — and money: a multi-channel *coherent* wideband receiver is far more expensive and power-hungry than a Kraken, which matters on a small airframe. In testing, the upgrade lifted located targets by ~20% and unlocked the 2.4 GHz control links the Kraken cannot hear.
+
 ## Still not modelled
 
 Where field data would matter most, and what a real system still has to solve:

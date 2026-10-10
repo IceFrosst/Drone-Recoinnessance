@@ -255,6 +255,11 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
           <span class="note" id="altNote"></span>
         </div>
         <div class="row">
+          <span class="lbl">Receiver <span class="val" id="rxVal"></span></span>
+          <div class="seg wide" id="rx" role="group" aria-label="Receiver"></div>
+          <span class="note" id="rxNote"></span>
+        </div>
+        <div class="row">
           <label for="nEmit">Target emitters <output id="nEmitVal" for="nEmit"></output></label>
           <input id="nEmit" type="range" min="2" max="10" step="1">
         </div>
@@ -345,7 +350,7 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
         <p>Bearings are combined by weighted least squares. Each bearing is weighted by its expected cross-range error, its angular error times its range, so strong bearings count more than faint ones. The 95% ellipse comes from the solution covariance, inflated when the bearings disagree more than the model expects. Bearings more than 3&sigma; from the fix are dropped one at a time, worst first, up to a quarter of them, so reflections and steep-zone bearings don't drag the fix away.</p>
         <p>Contacts are classified by signal fingerprint: band, hopping, cadence and bandwidth. Confidence builds burst by burst and grows faster on strong signals. A contact whose bearings never converge is treated as moving.</p>
         <p><strong>Dense spectrum and deinterleaving.</strong> The sector carries a configurable background population of friendly, civilian and other-unit emitters on top of the designated targets. Every emission becomes an anonymous burst, and an online clustering algorithm sorts the stream back into tracks by frequency, bandwidth, hop signature and bearing, with co-channel collisions and re-acquisition across silences. It scores itself against ground truth: each target is isolated, merged, split, or lost in the clutter, and the panel reports the tracks formed, the other control links found, and any false control-link tracks. Located fixes are the targets the deinterleaver could isolate; merged and split targets carry a widened, flagged ellipse.</p>
-        <p><strong>Mission profile and tasking.</strong> The survey flies a straight line out and returns to base. Pinpoint flies in, scores every candidate by value (control links highest, then jammers, then radios, weighted by confidence and by how rough the current fix is), diverts to the highest-value one, flies a single 180° arc to cut the bearing from a wide spread of angles, reports, and moves to the next until bingo fuel sends it home. A broad GNSS-denial belt runs along and behind the enemy line: inside it the drone navigates by dead-reckoning and its own position drifts, which widens every fix taken there. Comms jamming stays local, as bubbles around EW nodes. Operators hop across their whole band, and under Frontline RF a share of them retune mid-mission, which breaks the deinterleaver's track so the emitter reappears as a new one.</p>
+        <p><strong>Mission profile and tasking.</strong> The survey flies a straight line out and returns to base. Pinpoint flies in, scores every candidate by value (control links highest, then jammers, then radios, weighted by confidence and by how rough the current fix is), diverts to the highest-value one, flies a single 180° arc to cut the bearing from a wide spread of angles, reports, and moves to the next until bingo fuel sends it home. A broad GNSS-denial belt runs along and behind the enemy line: inside it the drone navigates by dead-reckoning and its own position drifts, which widens every fix taken there. Comms jamming stays local, as bubbles around EW nodes. Operators hop across their whole band, and under Frontline RF a share of them retune mid-mission, which breaks the deinterleaver's track so the emitter reappears as a new one. The Receiver control sets instantaneous bandwidth: a wider-band coherent receiver sweeps faster (shorter revisit, more bursts, tighter fixes), reaches higher in frequency (2.4/5.8 GHz), and classifies sooner, at a cost in size, weight and power.</p>
         <p><strong>Five-stage classification pipeline.</strong> Every event the receiver hears runs through five gates in order: band, self-noise blanking, noise-floor margin, hop fingerprint, then persistence and geometric convergence. A signal must pass all five to be shown as a located transmitter. The cheap gates run first and discard the most, so the expensive direction-finding only runs on a shrinking candidate set. The simulator proves the logic flows — the right signals survive and clutter dies — but it does not prove the fingerprint separates a real target from real-world clutter. That proof needs a field recording, and the fingerprint values are placeholders until then.</p>
         <table id="constTable"></table>
         <p><strong>Frontline degradation (the "Frontline RF" toggle).</strong> A real sector adds error a clean model omits. Modelled here: array and aircraft-attitude bearing error (folded into the reported ellipse, so it stays honest); multipath fading that makes signal strength swing second to second; a near-far floor rise when the band is busy, which buries weak emitters; shadowing from our own airframe; and burst mis-association, where a burst is filed under the wrong nearby target and the convergence gate has to catch it. Turn it off to compare against the clean illustration.</p>
@@ -377,7 +382,14 @@ const ALTITUDES = [
 const CRUISE_MS = 30;               // ground speed, m/s (~108 km/h)
 const TURN_RATE_DEG_S = 4;          // max turn rate
 const STEP_S = 2;                   // simulation step
-const DWELL_S = 6;                  // receiver revisit: one bearing attempt per emitter per dwell
+const DWELL_S = 6;                  // radio push-to-talk duty cadence (modeling constant)
+// Receiver tiers: instantaneous bandwidth sets the sweep revisit; ceiling sets what the array can hear.
+const RX_TIERS = [
+  { name: 'KrakenSDR', sub: '5-ch coherent · 2.4 MHz IBW · ≤1.77 GHz', revisitS: 6, ceil: 1766 },
+  { name: 'Wideband mid', sub: 'coherent · ~20 MHz IBW · ≤3 GHz', revisitS: 2.5, ceil: 3000 },
+  { name: 'Wideband', sub: 'coherent · ~56 MHz IBW · ≤6 GHz', revisitS: 2, ceil: 6000 },
+];
+const bandsFor = ceil => PIPE.bands.filter(b => b[0] < ceil).concat(ceil >= 2400 ? [[2400, 2500]] : []).concat(ceil >= 5700 ? [[5700, 5900]] : []);
 const MISSION_MAX_S = 3900;         // 65 min: out to the objective and back (RTB)
 
 // Link budget: SNR on boresight at 1 km slant range, before pattern and terrain losses
@@ -1022,7 +1034,8 @@ function isLocated(tr, snap, p) {
 
 /* ===================================================================== SIMULATION */
 function simulate(W, cfg, mode) {
-  cfg = Object.assign({ alt: 1, beam: BEAM_WIDTH_DEG, noise: 0, refl: true, realism: false, attDeg: 0, density: 150, margin: PIPE.marginDb, persistWin: PIPE.persistWin, convTolM: PIPE.convTolM, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }, cfg);
+  cfg = Object.assign({ alt: 1, beam: BEAM_WIDTH_DEG, noise: 0, refl: true, realism: false, attDeg: 0, density: 150, rx: 0, margin: PIPE.marginDb, persistWin: PIPE.persistWin, convTolM: PIPE.convTolM, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }, cfg);
+  const rxt = RX_TIERS[cfg.rx] || RX_TIERS[0], dwell = rxt.revisitS; cfg.bands = bandsFor(rxt.ceil);
   const R = makeRng(W.seed + '|sim|' + mode), Rp = makeRng(W.seed + '|pop|' + mode);
   const alt = ALTITUDES[cfg.alt].m, altZ = W.meanH + alt, bw = cfg.beam;
   const ems = W.emitters;
@@ -1049,10 +1062,10 @@ function simulate(W, cfg, mode) {
     return cw * pv.conf * recent * (0.6 + 0.4 * rough);
   };
   const oR = Math.max(ORBIT_R_MIN_M, alt * ORBIT_R_MULT);
-  const next = ems.map(() => R.range(0, DWELL_S));
+  const next = ems.map(() => R.range(0, dwell));
   let crossedF = false, crossedE = false, tEnd = MISSION_MAX_S;
   const groundN = ems.filter(e => e.type !== 'video').length;
-  say(0, `Launch at ${alt.toLocaleString('en-US')} m. Sweeping ${(cfg.density + groundN)} emitters across the sector; every burst must be sorted before it can be located.`);
+  say(0, `Launch at ${alt.toLocaleString('en-US')} m with the ${rxt.name} receiver (${rxt.revisitS}s sweep revisit, ${rxt.ceil >= 2400 ? 'covers' : 'blind above'} 2.4 GHz). ${(cfg.density + groundN)} emitters in the sector; every burst must be sorted before it can be located.`);
 
   // ---------- deinterleaver (sorts the dense anonymous burst stream into tracks) ----------
   const clusters = [], pop = W.population.slice(0, cfg.density), popNext = pop.map(pe => Rp.range(0, pe.intervalS));
@@ -1241,7 +1254,7 @@ function simulate(W, cfg, mode) {
     // --- intercepts: our designated targets (full fidelity) + the background population (dense clutter)
     binCount = {};
     for (let i = 0; i < ems.length; i++) {
-      while (next[i] <= t) { next[i] += DWELL_S * R.range(0.85, 1.15); intercept(tracks[i], t, nX, nY, desens, congest); }
+      while (next[i] <= t) { next[i] += dwell * R.range(0.85, 1.15); intercept(tracks[i], t, nX, nY, desens, congest); }
     }
     for (let i = 0; i < pop.length; i++) {
       while (popNext[i] <= t) { popNext[i] += pop[i].intervalS * Rp.range(0.7, 1.3); if (Rp() < pop[i].duty) popEmit(pop[i], t, nX, nY, desens, congest); }
@@ -1340,7 +1353,7 @@ function simulate(W, cfg, mode) {
     if (phase === 'arc' && target) rep.push(`${target.e.id} ±${fmtM(target.fix ? target.fix.a : NaN)} (mid-arc)`);
     say(tEnd, rep.length ? `Mission end. Pinpointed ${rep.join(', ')}. Everything else is from transit only.` : 'Mission end. No contact passed all five gates as a stationary control link, so no orbit was flown.', rep.length ? 'good' : 'warn');
   }
-  return { mode, tracks, path, misses, events, tEnd, alt, altZ, oR, wp, deint, pipe: { series, params: { persistWin: cfg.persistWin, convTolM: cfg.convTolM, margin: cfg.margin, winS: cfg.winS, bands: cfg.bands, selfNoise: cfg.selfNoise, hopRate: cfg.hopRate, burstMs: cfg.burstMs, burstBW: cfg.burstBW } } };
+  return { mode, tracks, path, misses, events, tEnd, alt, altZ, oR, wp, deint, pipe: { series, params: { persistWin: cfg.persistWin, convTolM: cfg.convTolM, margin: cfg.margin, winS: cfg.winS, revisitS: dwell, ceil: rxt.ceil, bands: cfg.bands, selfNoise: cfg.selfNoise, hopRate: cfg.hopRate, burstMs: cfg.burstMs, burstBW: cfg.burstBW } } };
 }
 
 /* ===================================================================== BASE MAP */
@@ -1437,7 +1450,7 @@ const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:
 
 const cvs = document.getElementById('map'), ctx = cvs.getContext('2d');
 const view = { cx: MAP_W / 2, cy: MAP_H / 2, s: 0.02, w: 800, h: 600, dpr: 1, fitted: false };
-const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM, realism: true, att: ATT_ERR_DEG, density: 150, spectrum: true, priority: true };
+const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM, realism: true, att: ATT_ERR_DEG, density: 150, spectrum: true, priority: true, rx: 0 };
 const hlIdx = () => state.hover >= 0 ? state.hover : state.pin;
 let world = null, sims = null;
 
@@ -1842,7 +1855,7 @@ function updatePanel() {
 }
 
 /* ===================================================================== UI WIRING */
-function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl, margin: state.margin, persistWin: state.persist, convTolM: state.convTol, realism: state.realism, attDeg: state.att, density: state.density, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }; }
+function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl, rx: state.rx, margin: state.margin, persistWin: state.persist, convTolM: state.convTol, realism: state.realism, attDeg: state.att, density: state.density, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }; }
 function rebuildSims(keep) {
   const frac = keep && sims ? state.t.map((t, i) => t / sims[i].tEnd) : [0, 0];
   sims = [simulate(world, cfg(), 0), simulate(world, cfg(), 1)];
@@ -1876,18 +1889,23 @@ function syncControls() {
   $('altVal').textContent = a.m.toLocaleString('en-US') + ' m';
   $('altNote').textContent = `${a.note} Steep zone ${fmtM(a.m)}; orbit ${fmtM(Math.max(ORBIT_R_MIN_M, a.m * ORBIT_R_MULT))}.`;
   document.querySelectorAll('#alt button').forEach((b, i) => b.setAttribute('aria-pressed', String(i === state.alt)));
+  const rt = RX_TIERS[state.rx];
+  $('rxVal').textContent = rt.revisitS + ' s revisit';
+  $('rxNote').textContent = `${rt.sub}. Faster sweep catches more bursts and tightens fixes sooner; wider coverage hears 2.4/5.8 GHz but adds clutter.`;
+  document.querySelectorAll('#rx button').forEach((b, i) => b.setAttribute('aria-pressed', String(i === state.rx)));
   document.querySelectorAll('#speed button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === state.speed)));
   document.querySelectorAll('.tabs button').forEach((b, i) => b.setAttribute('aria-selected', String(i === state.tab)));
   $('follow').setAttribute('aria-pressed', String(state.follow));
   $('margin').value = state.margin; $('marginVal').textContent = state.margin + ' dB';
   $('persist').value = state.persist; $('persistVal').textContent = state.persist + ' × ' + PIPE.winS + ' s';
   $('convTol').value = state.convTol; $('convTolVal').textContent = '±' + fmtM(state.convTol);
-  $('bandsNote').textContent = PIPE.bands.map(([a, b]) => `${a}–${b}`).join(' · ') + ' MHz · 2.4 GHz not covered';
+  $('bandsNote').textContent = bandsFor(RX_TIERS[state.rx].ceil).map(([a, b]) => `${a}–${b}`).join(' · ') + ' MHz';
   $('fpNote').textContent = `hop ${PIPE.hopRate[0]}–${PIPE.hopRate[1]}/s · burst ${PIPE.burstMs[0]}–${PIPE.burstMs[1]} ms · ${PIPE.burstBW[0]}–${PIPE.burstBW[1]} MHz · notional`;
 }
 function newSeed() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 6; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 
 $('alt').innerHTML = ALTITUDES.map((a, i) => `<button type="button" data-i="${i}">${a.label} · ${a.m.toLocaleString('en-US')} m</button>`).join('');
+$('rx').innerHTML = RX_TIERS.map((a, i) => `<button type="button" data-i="${i}">${a.name}</button>`).join('');
 $('constTable').innerHTML = [
   ['Controller main-beam width (default)', BEAM_WIDTH_DEG + '°'],
   ['Side lobe / back lobe', `${SIDELOBE_DB} / ${BACKLOBE_DB} dB`],
@@ -1896,7 +1914,7 @@ $('constTable').innerHTML = [
   ['Detection threshold (50% catch)', `${DETECT_SNR_DB} dB SNR`],
   ['Control link SNR at 1 km, on boresight', `${SNR_1KM_DB.ctrl} dB`],
   ['Path-loss exponent', PATHLOSS_EXP],
-  ['Receiver revisit per emitter', `${DWELL_S} s`],
+  ['Receiver revisit (per tier)', `${RX_TIERS.map(r => r.revisitS).join(' / ')} s`],
   ['Steep zone', `look-down over ${STEEP_ELEV_DEG}°`],
   ['Terrain masking loss', `${MASK_LOSS_DB} dB`],
   ['Reflection chance per bearing', pct(REFLECT_P)],
@@ -1926,6 +1944,7 @@ $('seed').addEventListener('keydown', e => {
   syncControls(); updatePanel();
 });
 $('alt').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.alt = +b.dataset.i; rebuildSims(true); syncControls(); updatePanel(); });
+$('rx').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.rx = +b.dataset.i; rebuildSims(true); syncControls(); updatePanel(); });
 let debounce = null;
 const onSlider = (id, key, rebuild) => $(id).addEventListener('input', e => {
   state[key] = +e.target.value; syncControls();
