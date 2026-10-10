@@ -144,6 +144,17 @@ details.model td:last-child { text-align: right; font-family: var(--font-data); 
 details.model td:first-child { color: var(--ink-dim); }
 details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: var(--ink-dim); }
 
+.funnel { display: flex; flex-direction: column; gap: 5px; }
+.fn { display: grid; grid-template-columns: 112px minmax(0, 1fr) 46px; gap: 9px; align-items: center; }
+.fn .fl { font: 600 11px var(--font-label); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fn .fbar { position: relative; height: 15px; background: var(--ground); border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.fn .fbar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, rgba(54,209,190,.45), rgba(54,209,190,.85)); }
+.fn .fv { font: 500 11.5px var(--font-data); font-variant-numeric: tabular-nums; color: var(--ink); text-align: right; }
+.fn.out .fl { color: var(--amber); }
+.fn.out .fbar i { background: linear-gradient(90deg, rgba(243,180,67,.5), rgba(243,180,67,.95)); }
+.fn.out .fv { color: var(--amber); }
+.cap { font-size: 12px; line-height: 1.4; color: var(--ink-faint); margin: 9px 0 0; }
+
 @media (max-width: 960px) {
   html, body { height: auto; }
   .app { display: block; height: auto; }
@@ -218,6 +229,11 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
       <div class="contacts" id="contacts"></div>
     </section>
     <section>
+      <h2>Classification pipeline</h2>
+      <div class="funnel" id="funnel"></div>
+      <p class="cap" id="pipeCap"></p>
+    </section>
+    <section>
       <h2>Scenario</h2>
       <div class="ctl">
         <div class="row">
@@ -241,6 +257,33 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
           <label><input type="checkbox" id="refl"> Terrain reflections</label>
           <label><input type="checkbox" id="truth"> Ground truth</label>
           <label><input type="checkbox" id="clutter"> Airborne clutter</label>
+        </div>
+      </div>
+    </section>
+    <section>
+      <h2>Pipeline gates</h2>
+      <div class="ctl">
+        <div class="row">
+          <label for="margin">Detection margin, S3 <output id="marginVal" for="margin"></output></label>
+          <input id="margin" type="range" min="2" max="16" step="1">
+          <span class="note">Lower catches more and admits more false alarms.</span>
+        </div>
+        <div class="row">
+          <label for="persist">Persistence, S5 <output id="persistVal" for="persist"></output></label>
+          <input id="persist" type="range" min="1" max="6" step="1">
+          <span class="note">Windows of contact before a candidate is promoted to a located transmitter.</span>
+        </div>
+        <div class="row">
+          <label for="convTol">Convergence tolerance, S5 <output id="convTolVal" for="convTol"></output></label>
+          <input id="convTol" type="range" min="500" max="8000" step="250">
+        </div>
+        <div class="row">
+          <span class="lbl">Watched bands, S1</span>
+          <span class="note" id="bandsNote"></span>
+        </div>
+        <div class="row">
+          <span class="lbl">Target hop fingerprint, S4</span>
+          <span class="note" id="fpNote"></span>
         </div>
       </div>
     </section>
@@ -271,6 +314,7 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
         <p>This is a physics-based illustration for briefing and discussion. Every number on screen is a modelled estimate. None of it is real RF data, and none of it is a claim of field performance.</p>
         <p>Bearings are combined by weighted least squares. Each bearing is weighted by its expected cross-range error, its angular error times its range, so strong bearings count more than faint ones. The 95% ellipse comes from the solution covariance, inflated when the bearings disagree more than the model expects. Bearings more than 3&sigma; from the fix are dropped one at a time, worst first, up to a quarter of them, so reflections and steep-zone bearings don't drag the fix away.</p>
         <p>Contacts are classified by signal fingerprint: band, hopping, cadence and bandwidth. Confidence builds burst by burst and grows faster on strong signals. A contact whose bearings never converge is treated as moving.</p>
+        <p><strong>Five-stage classification pipeline.</strong> Every event the receiver hears runs through five gates in order: band, self-noise blanking, noise-floor margin, hop fingerprint, then persistence and geometric convergence. A signal must pass all five to be shown as a located transmitter. The cheap gates run first and discard the most, so the expensive direction-finding only runs on a shrinking candidate set. The simulator proves the logic flows — the right signals survive and clutter dies — but it does not prove the fingerprint separates a real target from real-world clutter. That proof needs a field recording, and the fingerprint values are placeholders until then.</p>
         <table id="constTable"></table>
         <p>Not modelled: fibre-optic FPV drones (no RF to intercept), relay stations, operators changing power or channel, multiple receivers, real protocol libraries, and enemy fire against our drone.</p>
         <p>The constants sit at the top of the script, so field-test figures can replace them.</p>
@@ -365,6 +409,34 @@ const ORBIT_R_MIN_M = 2500;
 const FIX_DONE_M = 120;             // report and move on when the 95% semi-major is below this
 const ORBIT_MAX_LAPS = 3;
 const SILENT_GIVEUP_S = 480;
+
+// Classification pipeline (five gates; a signal must pass every gate to be located).
+// NOTIONAL placeholders. Stage 4's hop fingerprint is the one piece that can only be
+// set from a real field recording — it is kept adjustable and no value here is "correct".
+const PIPE = {
+  bands: [[30, 90], [400, 490], [720, 1020], [1240, 1340], [2100, 2300]],  // Stage 1 watched ranges, MHz (2.4 GHz deliberately not covered)
+  selfNoise: [[434, 436], [758, 762], [2248, 2252]],                       // Stage 2 our own platform's emissions, MHz
+  marginDb: 4,            // Stage 3 detection margin above the rolling noise floor, dB
+  hopRate: [100, 900],    // Stage 4 target hop rate, hops/s
+  burstMs: [0.5, 12],     // Stage 4 target burst length, ms
+  burstBW: [0.3, 3],      // Stage 4 target burst bandwidth, MHz
+  fpSlipP: 0.05,          // Stage 4 chance an unrelated hopper slips through
+  persistWin: 3,          // Stage 5 windows of contact before a candidate is promoted
+  convTolM: 5000,         // Stage 5 convergence: reject scatter; 95% semi-major must fall below this, m
+  winS: 30,               // one detection window, s
+};
+const inW = (v, r) => v >= r[0] && v <= r[1];
+const bandMHz = b => ({ '868 MHz': 868, '915 MHz': 915, '433 MHz': 433, '1.2 GHz': 1200, '1.3 GHz': 1300, '2.2 GHz': 2200, '2.4 GHz': 2440, '5.8 GHz': 5800 }[b] ?? parseFloat(b));
+// The gate an emitter's events reach deterministically (Stages 1, 2, 4); Stages 3 and 5 are decided over time.
+function pipeStage(e, cfg) {
+  const f = e.fMHz;
+  if (!cfg.bands.some(r => inW(f, r))) return 1;          // outside watched bands
+  if (cfg.selfNoise.some(r => inW(f, r))) return 2;       // on our own platform's frequency
+  const fp = e.fp;
+  const match = fp.hop && inW(fp.hopRate, cfg.hopRate) && inW(fp.burstMs, cfg.burstMs) && inW(fp.burstBW, cfg.burstBW);
+  const wideband = !fp.hop && e.type === 'jam';           // strong wideband interferer: kept
+  return (match || wideband) ? 5 : 4;                     // else rejected at the hop-fingerprint gate
+}
 
 /* ===================================================================== */
 
@@ -580,7 +652,10 @@ function genWorld(seed, nEmit) {
     const sub = (i === 0 || R() < 0.68) ? 'fpv' : 'isr';
     const p = sub === 'fpv' ? place(2000, 7000) : place(7000, 15000);
     const e = { type: 'ctrl', sub, x: p.x, y: p.y, idx: ems.length };
-    e.band = sub === 'fpv' ? R.pick(['868 MHz', '915 MHz', '2.4 GHz']) : R.pick(['1.3 GHz', '2.4 GHz']);
+    e.band = i === 0 ? '915 MHz' : sub === 'fpv' ? R.pick(['915 MHz', '915 MHz', '868 MHz', '868 MHz', '2.4 GHz']) : R.pick(['1.3 GHz', '1.3 GHz', '2.4 GHz']);
+    e.fMHz = bandMHz(e.band);
+    e.fp = { hop: true, hopRate: R.range(150, 500), burstMs: R.range(1, 6), burstBW: R.range(0.5, 2) };
+    e.pclass = 'target';
     e.sig = sub === 'fpv' ? `${e.band} · frequency hopping · steady packet cadence` : `${e.band} · hopping command uplink · continuous`;
     e.subName = sub === 'fpv' ? 'FPV strike operator' : 'Recon UAS ground station';
     if (sub === 'fpv') {
@@ -604,20 +679,20 @@ function genWorld(seed, nEmit) {
   }
   for (let i = 0; i < nJ; i++) {
     const p = place(3000, 10000);
-    const lo = R.pick([400, 700, 1200, 2200]);
-    ems.push({ type: 'jam', x: p.x, y: p.y, idx: ems.length, jamR: R.range(6000, 9500), sig: `${lo}–${Math.round(lo * 1.6)} MHz wideband noise · continuous` });
+    const lo = R.pick([430, 760, 1260, 2150]);
+    ems.push({ type: 'jam', x: p.x, y: p.y, idx: ems.length, jamR: R.range(6000, 9500), fMHz: lo, fp: { hop: false, burstBW: R.range(10, 40), cont: true }, pclass: 'wideband', sig: `${lo}–${Math.round(lo * 1.6)} MHz wideband noise · continuous` });
   }
   for (let i = 0; i < nR; i++) {
     const p = place(1500, 14000, true);
     const f = R.int(30, 87);
-    ems.push({ type: 'radio', x: p.x, y: p.y, idx: ems.length, sig: `VHF ${f} MHz · 25 kHz voice · push-to-talk` });
+    ems.push({ type: 'radio', x: p.x, y: p.y, idx: ems.length, fMHz: f, fp: { hop: false, burstBW: 0.025, cont: true }, pclass: 'ordinary', sig: `VHF ${f} MHz · 25 kHz voice · push-to-talk` });
   }
   const counters = { ctrl: 0, jam: 0, radio: 0 }, prefix = { ctrl: 'C', jam: 'J', radio: 'R' };
   for (const e of ems) { e.id = prefix[e.type] + (++counters[e.type]); e.z = hAt(e.x, e.y) + 4; }
   // each controller's drone carries a video downlink: an airborne emitter
   for (const c of ems.filter(e => e.type === 'ctrl')) {
-    const band = c.sub === 'fpv' ? R.pick(['5.8 GHz', '1.2 GHz']) : '2.2 GHz';
-    ems.push({ type: 'video', parent: c, idx: ems.length, id: 'U' + c.id.slice(1), agl: c.sub === 'fpv' ? FPV_AGL_M : ISR_AGL_M, sig: `${band} · ${band === '5.8 GHz' ? 'analog' : 'digital'} video carrier · 8–20 MHz wide` });
+    const band = c.sub === 'fpv' ? R.pick(['5.8 GHz', '1.2 GHz', '2.2 GHz']) : '2.2 GHz';
+    ems.push({ type: 'video', parent: c, idx: ems.length, id: 'U' + c.id.slice(1), agl: c.sub === 'fpv' ? FPV_AGL_M : ISR_AGL_M, fMHz: bandMHz(band), fp: { hop: false, burstBW: R.range(8, 20), cont: true }, pclass: 'ordinary', sig: `${band} · ${band.startsWith('5') ? 'analog' : 'digital'} video carrier · 8–20 MHz wide` });
   }
   W.emitters = ems;
   W.jammers = ems.filter(e => e.type === 'jam');
@@ -846,14 +921,25 @@ function postView(post, fix) {
   return { p, cls: CLASSES[best], conf: p[best] };
 }
 
+// A transmitter is "located" only if it reaches Stage 5 (passed gates 1-4), has been held
+// across enough windows (persistence), and its bearings converge to a tight enough fix.
+function isLocated(tr, snap, p) {
+  if (!snap || tr.pstage !== 5) return false;
+  const f = snap.fix;
+  return (snap.windows || 0) >= p.persistWin && f && f.valid && !f.moving && f.a <= p.convTolM;
+}
+
 /* ===================================================================== SIMULATION */
 function simulate(W, cfg, mode) {
+  cfg = Object.assign({ alt: 1, beam: BEAM_WIDTH_DEG, noise: 0, refl: true, margin: PIPE.marginDb, persistWin: PIPE.persistWin, convTolM: PIPE.convTolM, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }, cfg);
   const R = makeRng(W.seed + '|sim|' + mode);
   const alt = ALTITUDES[cfg.alt].m, altZ = W.meanH + alt, bw = cfg.beam;
   const ems = W.emitters;
-  const tracks = ems.map((e, i) => ({ i, e, b: [], snaps: [], post: CLASSES.map(c => CLASS_PRIOR[c]), nDet: 0, nMiss: 0, lobes: [0, 0, 0], firstT: -1, lastT: -1e9, maxSnr: -99, fix: null, done: false, ev: {}, lastLobe: null, reported: null, class90: false, movingSaid: false, wasTx: false }));
+  const tracks = ems.map((e, i) => ({ i, e, b: [], snaps: [], post: CLASSES.map(c => CLASS_PRIOR[c]), nDet: 0, nMiss: 0, lobes: [0, 0, 0], firstT: -1, lastT: -1e9, maxSnr: -99, fix: null, done: false, ev: {}, lastLobe: null, reported: null, class90: false, movingSaid: false, wasTx: false, windows: 0, lastWin: -1, nRej4: 0, pstage: 5 }));
+  for (const tr of tracks) tr.pstage = pipeStage(tr.e, cfg);
   const path = { t: [], x: [], y: [], h: [], nx: [], ny: [], ph: [], ocx: [], ocy: [], tg: [], lap: [] };
   const misses = [], events = [];
+  const F = { raw: 0, s1: 0, s2: 0, s3: 0, s4: 0 }, series = []; let nextWin = 0;
   const say = (t, text, kind = 'info') => events.push({ t, text, kind });
   const once = (tr, key, t, gap) => { if (t - (tr.ev[key] ?? -1e9) < gap) return false; tr.ev[key] = t; return true; };
   const L = W.launch, wp = mode === 0 ? W.route1End : W.route2End;
@@ -870,7 +956,7 @@ function simulate(W, cfg, mode) {
     if (!force && n > 30 && n % (n > 150 ? 8 : n > 60 ? 4 : 2) !== 0) return;
     tr.fix = solveFix(tr.b, n, alt, tr.fix, tr.snaps.length % 5 === 0);
     const pv = postView(tr.post, tr.fix);
-    tr.snaps.push({ t, n, fix: tr.fix, post: tr.post.slice(), nDet: tr.nDet, nMiss: tr.nMiss, lobes: tr.lobes.slice() });
+    tr.snaps.push({ t, n, fix: tr.fix, post: tr.post.slice(), nDet: tr.nDet, nMiss: tr.nMiss, lobes: tr.lobes.slice(), windows: tr.windows, rej4: tr.nRej4 });
     if (tr.fix && tr.fix.rej.some(k => tr.b[k].kind === 'false') && once(tr, 'refl', t, 600)) say(t, `Terrain reflection on ${tr.e.id} rejected by the outlier gate.`, 'warn');
     if (tr.fix && tr.fix.moving && !tr.movingSaid) { tr.movingSaid = true; say(t, `${tr.e.id} bearings don't converge. Moving emitter, likely airborne; no fix attempted.`); }
     if (!tr.class90 && pv.conf >= LOCK_CONF && tr.nDet >= 3) { tr.class90 = true; say(t, `${tr.e.id} classified: ${TYPE_NAME[pv.cls].toLowerCase()} (${pct(pv.conf)}).`, pv.cls === 'ctrl' ? 'good' : 'info'); }
@@ -885,6 +971,11 @@ function simulate(W, cfg, mode) {
       tr.wasTx = tx;
     }
     if (!tx) return;
+    F.raw++;                                        // Stage 0: the receiver hears this event
+    if (tr.pstage === 1) return;                    // Stage 1: outside watched bands, not received
+    F.s1++;
+    if (tr.pstage === 2) return;                    // Stage 2: on our own platform's frequency, blanked
+    F.s2++;
     const ep = emPos(W, e, t);
     const hx = px - ep.x, hy = py - ep.y, horiz = Math.hypot(hx, hy), dz = altZ - ep.z, slant = Math.hypot(horiz, dz);
     const elev = Math.atan2(dz, Math.max(horiz, 1)) * R2D;
@@ -899,12 +990,18 @@ function simulate(W, cfg, mode) {
     const snr = snr0 - (masked ? MASK_LOSS_DB : 0);
     const pd = 1 / (1 + Math.exp(-(snr - DETECT_SNR_DB) / DETECT_SLOPE_DB));
     const azTrue = azOf(ep.x - px, ep.y - py);
-    if (R() >= pd) {
+    if (R() >= pd || snr < cfg.margin) {           // Stage 3: below the detection margin above the floor
       if (pd >= MISS_MIN_P) { tr.nMiss++; misses.push({ t, x: px, y: py, az: azTrue, i: tr.i }); }
       const pd0 = 1 / (1 + Math.exp(-(snr0 - DETECT_SNR_DB) / DETECT_SLOPE_DB));
       if (masked && pd0 > 0.5 && e.type !== 'video' && once(tr, 'mask', t, 480)) say(t, `${e.id} masked by a ridge at ${alt.toLocaleString('en-US')} m. Bursts lost.`, 'warn');
       return;
     }
+    F.s3++;
+    // Stage 4: hop fingerprint. A bearing is still measured for display, but only fingerprint-matching
+    // hoppers (and strong wideband interferers) are counted as candidates and feed the persistence clock.
+    const fpPass = tr.pstage === 5 || ((e.type === 'video' || e.pclass === 'otherhop') && R() < cfg.fpSlipP);
+    if (fpPass) { F.s4++; const w = Math.floor(t / cfg.winS); if (w !== tr.lastWin) { tr.lastWin = w; tr.windows++; } }
+    else tr.nRej4++;
     // --- caught a burst: measure a bearing
     tr.nDet++; tr.lastT = t; tr.maxSnr = Math.max(tr.maxSnr, snr);
     if (lobe) tr.lobes[lobe === 'main' ? 0 : lobe === 'side' ? 1 : 2]++;
@@ -970,7 +1067,7 @@ function simulate(W, cfg, mode) {
       if (phase === 'transit') {
         let best = null, bestP = 0;
         for (const tr of tracks) {
-          if (tr.done || tr.nDet < LOCK_MIN_BURSTS || !tr.fix || !tr.fix.valid || tr.fix.moving || tr.fix.a > LOCK_FIX_MAX_M || t - tr.lastT > LOCK_RECENT_S) continue;
+          if (tr.done || tr.pstage !== 5 || (tr.windows || 0) < cfg.persistWin || tr.nDet < LOCK_MIN_BURSTS || !tr.fix || !tr.fix.valid || tr.fix.moving || tr.fix.a > LOCK_FIX_MAX_M || t - tr.lastT > LOCK_RECENT_S) continue;
           const pv = postView(tr.post, tr.fix);
           if (pv.cls === 'ctrl' && pv.conf >= LOCK_CONF && pv.conf > bestP) { best = tr; bestP = pv.conf; }
         }
@@ -997,31 +1094,41 @@ function simulate(W, cfg, mode) {
       }
     }
 
+    // classification pipeline funnel: sample once per window, with modelled background clutter
+    if (t >= nextWin) {
+      nextWin += cfg.winS;
+      const oob = R.int(40, 90), self = R.int(20, 45), misc = R.int(15, 35);   // out-of-band / self-noise / in-band wrong-fingerprint
+      F.raw += oob + self + misc; F.s1 += self + misc; F.s2 += misc; F.s3 += Math.round(misc * 0.6);
+      let loc = 0;
+      for (const tr of tracks) if (tr.e.type !== 'video' && isLocated(tr, tr.snaps[tr.snaps.length - 1], cfg)) loc++;
+      series.push({ t, raw: F.raw, s1: F.s1, s2: F.s2, s3: F.s3, s4: F.s4, loc });
+    }
+
     path.t.push(t); path.x.push(px); path.y.push(py); path.h.push(hdg); path.nx.push(nX); path.ny.push(nY);
     path.ph.push(phase === 'orbit' ? 1 : 0); path.ocx.push(ocx); path.ocy.push(ocy); path.tg.push(target ? target.i : -1); path.lap.push(lap);
 
     if (phase === 'transit' && Math.hypot(wp.x - px, wp.y - py) < 600) { tEnd = t; break; }
     tEnd = t;
   }
-  for (const tr of tracks) if (tr.b.length && (!tr.snaps.length || tr.snaps[tr.snaps.length - 1].n !== tr.b.length)) { tr.fix = solveFix(tr.b, tr.b.length, alt, tr.fix); tr.snaps.push({ t: tr.b[tr.b.length - 1].t, n: tr.b.length, fix: tr.fix, post: tr.post.slice(), nDet: tr.nDet, nMiss: tr.nMiss, lobes: tr.lobes.slice() }); }
+  for (const tr of tracks) if (tr.b.length && (!tr.snaps.length || tr.snaps[tr.snaps.length - 1].n !== tr.b.length)) { tr.fix = solveFix(tr.b, tr.b.length, alt, tr.fix); tr.snaps.push({ t: tr.b[tr.b.length - 1].t, n: tr.b.length, fix: tr.fix, post: tr.post.slice(), nDet: tr.nDet, nMiss: tr.nMiss, lobes: tr.lobes.slice(), windows: tr.windows, rej4: tr.nRej4 }); }
 
   // --- summary
-  const ground = tracks.filter(tr => tr.e.type !== 'video');
-  const grade = tr => !tr.nDet ? 'none' : tr.fix && tr.fix.valid && !tr.fix.moving ? (tr.fix.a < 400 ? 'tight' : tr.fix.a < 3000 ? 'rough' : 'poor') : 'poor';
-  const list = g => ground.filter(tr => grade(tr) === g).map(tr => tr.e.id).join(', ');
+  const isLoc = tr => isLocated(tr, tr.snaps[tr.snaps.length - 1], cfg);
+  const ids = arr => arr.map(tr => tr.e.id).join(', ');
   if (mode === 0) {
-    const parts = [];
-    if (list('tight')) parts.push(`tight fixes on ${list('tight')}`);
-    if (list('rough')) parts.push(`rough on ${list('rough')}`);
-    if (list('poor')) parts.push(`too few or poor bearings on ${list('poor')}`);
-    if (list('none')) parts.push(`nothing heard from ${list('none')}`);
+    const loc = tracks.filter(tr => tr.pstage === 5 && isLoc(tr));
+    const rej = tracks.filter(tr => tr.nDet && tr.pstage === 4 && tr.e.type !== 'video');
+    const oob = tracks.filter(tr => tr.pstage === 1 && tr.e.type !== 'video');
+    const parts = [loc.length ? `located ${ids(loc)}` : 'nothing located'];
+    if (rej.length) parts.push(`heard but rejected at the fingerprint gate: ${ids(rej)}`);
+    if (oob.length) parts.push(`out of band, not received: ${ids(oob)}`);
     say(tEnd, `Pass complete: ${parts.join('; ')}.`, 'good');
   } else {
     const rep = tracks.filter(tr => tr.reported).map(tr => `${tr.e.id} ±${fmtM(tr.reported.a)}`);
     if (phase === 'orbit' && target) rep.push(`${target.e.id} ±${fmtM(target.fix ? target.fix.a : NaN)} (still orbiting)`);
-    say(tEnd, rep.length ? `Mission end. Pinpointed ${rep.join(', ')}. Everything else is from transit only.` : 'Mission end. No contact reached 90% control-link confidence, so no orbit was flown.', rep.length ? 'good' : 'warn');
+    say(tEnd, rep.length ? `Mission end. Pinpointed ${rep.join(', ')}. Everything else is from transit only.` : 'Mission end. No contact passed all five gates as a stationary control link, so no orbit was flown.', rep.length ? 'good' : 'warn');
   }
-  return { mode, tracks, path, misses, events, tEnd, alt, altZ, oR, wp };
+  return { mode, tracks, path, misses, events, tEnd, alt, altZ, oR, wp, pipe: { series, params: { persistWin: cfg.persistWin, convTolM: cfg.convTolM, margin: cfg.margin, winS: cfg.winS, bands: cfg.bands, selfNoise: cfg.selfNoise, hopRate: cfg.hopRate, burstMs: cfg.burstMs, burstBW: cfg.burstBW } } };
 }
 
 /* ===================================================================== BASE MAP */
@@ -1118,7 +1225,7 @@ const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:
 
 const cvs = document.getElementById('map'), ctx = cvs.getContext('2d');
 const view = { cx: MAP_W / 2, cy: MAP_H / 2, s: 0.02, w: 800, h: 600, dpr: 1, fitted: false };
-const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1 };
+const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM };
 const hlIdx = () => state.hover >= 0 ? state.hover : state.pin;
 let world = null, sims = null;
 
@@ -1282,11 +1389,10 @@ function draw(now) {
     }
   }
 
-  // estimates
+  // estimates (located transmitters only: survivors of all five pipeline gates)
   for (const tr of sim.tracks) {
-    const snap = snapAt(tr, t); if (!snap || !snap.fix || !snap.fix.valid) continue;
+    const snap = snapAt(tr, t); if (!isLocated(tr, snap, sim.pipe.params)) continue;
     const pv = postView(snap.post, snap.fix);
-    if (snap.fix.moving || (pv.cls === 'video' && pv.conf > 0.7)) continue;
     const f = snap.fix, ex = X(f.x), ey = Y(f.y), col = TYPE_COL[pv.cls], isHov = hov === tr.i, dimmed = hov >= 0 && !isHov;
     ctx.globalAlpha = dimmed ? 0.3 : 1;
     if (state.truth) { const tp = emPos(world, tr.e, t); ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(X(tp.x), Y(tp.y)); ctx.setLineDash([1, 3]); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.stroke(); }
@@ -1377,6 +1483,18 @@ const BRIEF = [
 function grade(f) { return !f || !f.valid || f.nUsed < 8 ? 'poor' : f.a < 400 ? 'tight' : f.a < 3000 ? 'rough' : 'poor'; }
 function lobeText(l) { return l[0] + l[1] + l[2] === 0 ? '' : `main ${l[0]} · side ${l[1]} · back ${l[2]}`; }
 
+function updateFunnel(sim, t) {
+  const S = sim.pipe.series; let e = null;
+  for (let i = 0; i < S.length; i++) { if (S[i].t <= t) e = S[i]; else break; }
+  if (!e) e = { raw: 0, s1: 0, s2: 0, s3: 0, s4: 0, loc: 0 };
+  const maxv = Math.max(1, e.raw);
+  const rows = [['Raw events heard', e.raw], ['1 · In band', e.s1], ['2 · Not self-noise', e.s2], ['3 · Above floor', e.s3], ['4 · Hop fingerprint', e.s4]];
+  let html = rows.map(([l, v]) => `<div class="fn"><span class="fl">${l}</span><span class="fbar"><i style="width:${Math.round(100 * v / maxv)}%"></i></span><span class="fv">${v.toLocaleString('en-US')}</span></div>`).join('');
+  html += `<div class="fn out"><span class="fl">5 · Located</span><span class="fbar"><i style="width:${Math.min(100, e.loc ? 14 + e.loc * 14 : 3)}%"></i></span><span class="fv">${e.loc} tx</span></div>`;
+  $('funnel').innerHTML = html;
+  $('pipeCap').textContent = `${e.raw.toLocaleString('en-US')} events heard → ${e.loc} located. Gates 1–4 count events; Gate 5 (direction finding) collapses the survivors into located transmitters. Fingerprint values are notional until set from a field recording.`;
+}
+
 function updatePanel() {
   const sim = sims[state.tab], t = state.t[state.tab], p = pathAt(sim, t);
   $('tnow').textContent = 'T+' + fmtT(t); $('tend').textContent = fmtT(sim.tEnd);
@@ -1386,59 +1504,72 @@ function updatePanel() {
   $('briefStatus').textContent = p.ph === 1 ? `${altTxt} · ORBIT ${world.emitters[p.tg].id} · LAP ${(p.lap / 360).toFixed(1)}` : `${altTxt} · ${t >= sim.tEnd ? 'MISSION COMPLETE' : 'TRANSIT'} · HDG ${fmtAz(p.h)}`;
 
   // contacts at time t
+  const PP = sim.pipe.params;
   const rows = [];
   for (const tr of sim.tracks) {
     const snap = snapAt(tr, t); if (!snap) continue;
     if (tr.e.type === 'video' && !state.clutter) continue;
-    const pv = postView(snap.post, snap.fix), f = snap.fix && snap.fix.valid && !snap.fix.moving ? snap.fix : null;
+    const pv = postView(snap.post, snap.fix);
+    const loc = isLocated(tr, snap, PP);
+    const f = loc ? snap.fix : null;
     const err = f ? Math.hypot(f.x - emPos(world, tr.e, t).x, f.y - emPos(world, tr.e, t).y) : NaN;
-    rows.push({ tr, snap, pv, f, err, nB: upto(tr.b, t) });
+    rows.push({ tr, snap, pv, loc, f, err, nB: upto(tr.b, t) });
   }
-  // best fix: in Pinpoint, the current or last locked target; otherwise tightest ground contact
+  // best fix: in Pinpoint, the current or last locked target; otherwise the tightest located control link
   let best = null;
-  const usable = rows.filter(r => r.f && r.pv.cls !== 'video');
-  if (state.tab === 1) { const tgi = sim.path.tg[p.i]; if (tgi >= 0) best = rows.find(r => r.tr.i === tgi) || null; }
+  const usable = rows.filter(r => r.loc && r.pv.cls !== 'video');
+  if (state.tab === 1) { const tgi = sim.path.tg[p.i]; if (tgi >= 0) best = rows.find(r => r.tr.i === tgi && r.loc) || null; }
   if (!best && usable.length) best = usable.slice().sort((a, b) => (a.pv.cls === 'ctrl' ? 0 : 1) - (b.pv.cls === 'ctrl' ? 0 : 1) || a.f.a - b.f.a)[0];
   const bf = $('bestfix');
   if (!best) {
-    bf.innerHTML = `<p class="empty">No fix yet. A fix needs bearings on one emitter from at least two different positions.</p>`;
+    bf.innerHTML = `<p class="empty">No located transmitter yet. A fix needs fingerprint-matching bursts from two or more positions, held across ${PP.persistWin} windows.</p>`;
     $('bfNote').textContent = '';
   } else {
     const { tr, pv, f, err, snap } = best, cls = pv.cls;
-    const used = f ? f.nUsed : 0, rejN = f ? f.rej.length : 0;
-    $('bfNote').textContent = state.tab === 1 && sim.path.tg[p.i] === tr.i ? 'locked target' : 'tightest so far';
+    $('bfNote').textContent = state.tab === 1 && sim.path.tg[p.i] === tr.i ? 'locked target' : 'tightest located';
     bf.innerHTML = `<div class="fixhead"><span class="chip ${tr.e.type}">${tr.e.id}</span><div><div class="fixclass">${TYPE_NAME[cls]} <span class="fixsub">${pct(pv.conf)}</span></div><div class="fixsub">${tr.e.sig}</div></div></div>
       <dl class="stats">
-        <div><dt>Error vs truth</dt><dd>${f ? fmtM(err) : '–'}</dd><small>known only in simulation</small></div>
-        <div><dt>Uncertainty 95%</dt><dd>${f ? '±' + fmtM(f.a) : '–'}</dd><small>${f ? `ellipse ${fmtM(f.a)} × ${fmtM(f.b)}` : 'bearings too parallel'}</small></div>
-        <div><dt>Bearings used</dt><dd>${used}<span> / ${snap.n}</span></dd><small>${rejN} rejected · ${snap.nMiss} bursts missed</small></div>
+        <div><dt>Error vs truth</dt><dd>${fmtM(err)}</dd><small>known only in simulation</small></div>
+        <div><dt>Uncertainty 95%</dt><dd>±${fmtM(f.a)}</dd><small>ellipse ${fmtM(f.a)} × ${fmtM(f.b)}</small></div>
+        <div><dt>Bearings used</dt><dd>${f.nUsed}<span> / ${snap.n}</span></dd><small>${f.rej.length} rejected · ${snap.nMiss} bursts missed</small></div>
         <div><dt>${tr.e.type === 'ctrl' ? 'Heard via' : 'Pattern'}</dt><dd style="font-size:15px">${tr.e.type === 'ctrl' ? (snap.lobes[0] ? 'main beam' : snap.lobes[1] ? 'side lobe' : 'back lobe') : 'omni'}</dd><small>${tr.e.type === 'ctrl' ? lobeText(snap.lobes) : 'radiates all directions'}</small></div>
       </dl>`;
   }
 
   // contacts list
   const order = { ctrl: 0, jam: 1, radio: 2, video: 3 };
-  rows.sort((a, b) => order[a.tr.e.type] - order[b.tr.e.type] || a.tr.e.id.localeCompare(b.tr.e.id));
+  rows.sort((a, b) => (b.loc - a.loc) || order[a.tr.e.type] - order[b.tr.e.type] || a.tr.e.id.localeCompare(b.tr.e.id));
   const heardIds = new Set(rows.map(r => r.tr.i));
   const silent = world.emitters.filter(e => e.type !== 'video' && !heardIds.has(sim.tracks[e.idx].i));
-  $('ccount').textContent = `${rows.length} heard · ${silent.length} not yet`;
+  const nLoc = rows.filter(r => r.loc).length;
+  $('ccount').textContent = `${nLoc} located · ${rows.length} heard`;
   const box = $('contacts'), seen = new Set();
   rows.forEach(r => {
-    const { tr, pv, f, err, snap, nB } = r, g = grade(f);
-    const wrong = state.truth && pv.conf > 0.6 && pv.cls !== tr.e.type;
-    const q = snap.fix && snap.fix.moving ? 'moving' : f ? '±' + fmtM(f.a) : 'no fix';
-    const meta = [`${nB} brg`, f && f.nUsed < 8 ? 'few bearings' : null, f ? `${f.rej.length} rej` : null, snap.nMiss ? `${snap.nMiss} missed` : null, state.truth && f ? `err ${fmtM(err)}` : null, tr.e.type === 'ctrl' ? lobeText(snap.lobes) : null].filter(Boolean).join(' · ');
+    const { tr, pv, loc, f, err, snap, nB } = r;
+    const wrong = state.truth && pv.conf > 0.6 && pv.cls !== tr.e.type && tr.e.type !== 'video';
+    let q, qc;
+    if (loc) { q = '±' + fmtM(f.a); qc = grade(f); }
+    else if (snap.fix && snap.fix.moving) { q = 'moving'; qc = 'poor'; }
+    else if (tr.pstage === 5) { q = 'candidate'; qc = 'rough'; }
+    else { q = 'rejected'; qc = 'poor'; }
+    const why = loc ? null
+      : tr.pstage === 2 ? 'self-noise · S2'
+      : tr.pstage === 4 ? (tr.e.type === 'video' ? 'continuous carrier · S4' : tr.e.type === 'radio' ? 'not a hopper · S4' : 'wrong fingerprint · S4')
+      : snap.fix && snap.fix.moving ? 'moving · S5'
+      : tr.pstage === 5 ? `building · S5 ${snap.windows || 0}/${PP.persistWin}` : null;
+    const meta = [`${nB} brg`, why, loc && f.rej.length ? `${f.rej.length} rej` : null, snap.nMiss ? `${snap.nMiss} missed` : null, state.truth && loc ? `err ${fmtM(err)}` : null].filter(Boolean).join(' · ');
     let el = rowEls.get(tr.i);
     if (!el) { el = document.createElement('button'); el.type = 'button'; el.className = 'contact'; el.dataset.i = tr.i; rowEls.set(tr.i, el); }
-    const html = `<span class="chip ${tr.e.type}">${tr.e.id}</span><span class="cls">${TYPE_NAME[pv.cls]} <em>${pct(pv.conf)}</em>${wrong ? '<span class="bad">misread</span>' : ''}</span><span class="q ${snap.fix && snap.fix.moving ? 'poor' : g}">${q}</span><span class="meta">${meta}</span>`;
+    const html = `<span class="chip ${tr.e.type}">${tr.e.id}</span><span class="cls">${TYPE_NAME[pv.cls]} <em>${pct(pv.conf)}</em>${wrong ? '<span class="bad">misread</span>' : ''}</span><span class="q ${qc}">${q}</span><span class="meta">${meta}</span>`;
     if (el._html !== html) { el.innerHTML = html; el._html = html; }
     el.classList.toggle('hl', hlIdx() === tr.i);
     el.setAttribute('aria-pressed', String(state.pin === tr.i));
     box.appendChild(el); seen.add(tr.i);
   });
   for (const [i, el] of rowEls) if (!seen.has(i)) { el.remove(); }
-  silentNote.textContent = silent.length && state.truth ? `Not heard yet: ${silent.map(e => e.id).join(', ')}` : '';
+  silentNote.textContent = silent.length && state.truth ? `Not heard: ${silent.map(e => e.id).join(', ')}` : '';
   box.appendChild(silentNote);
+  updateFunnel(sim, t);
 
   // log
   const n = upto(sim.events, t), evs = sim.events.slice(Math.max(0, n - 7), n).reverse();
@@ -1446,7 +1577,7 @@ function updatePanel() {
 }
 
 /* ===================================================================== UI WIRING */
-function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl }; }
+function cfg() { return { alt: state.alt, beam: state.beam, noise: state.noise, refl: state.refl, margin: state.margin, persistWin: state.persist, convTolM: state.convTol, winS: PIPE.winS, fpSlipP: PIPE.fpSlipP, bands: PIPE.bands, selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW }; }
 function rebuildSims(keep) {
   const frac = keep && sims ? state.t.map((t, i) => t / sims[i].tEnd) : [0, 0];
   sims = [simulate(world, cfg(), 0), simulate(world, cfg(), 1)];
@@ -1479,6 +1610,11 @@ function syncControls() {
   document.querySelectorAll('#speed button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === state.speed)));
   document.querySelectorAll('.tabs button').forEach((b, i) => b.setAttribute('aria-selected', String(i === state.tab)));
   $('follow').setAttribute('aria-pressed', String(state.follow));
+  $('margin').value = state.margin; $('marginVal').textContent = state.margin + ' dB';
+  $('persist').value = state.persist; $('persistVal').textContent = state.persist + ' × ' + PIPE.winS + ' s';
+  $('convTol').value = state.convTol; $('convTolVal').textContent = '±' + fmtM(state.convTol);
+  $('bandsNote').textContent = PIPE.bands.map(([a, b]) => `${a}–${b}`).join(' · ') + ' MHz · 2.4 GHz not covered';
+  $('fpNote').textContent = `hop ${PIPE.hopRate[0]}–${PIPE.hopRate[1]}/s · burst ${PIPE.burstMs[0]}–${PIPE.burstMs[1]} ms · ${PIPE.burstBW[0]}–${PIPE.burstBW[1]} MHz · notional`;
 }
 function newSeed() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 6; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 
@@ -1499,6 +1635,12 @@ $('constTable').innerHTML = [
   ['GNSS-denied drift', `${NAV_DRIFT_MS} m/s`],
   ['Lock rule', `≥${pct(LOCK_CONF)} control link, ≥${LOCK_MIN_BURSTS} bursts, stationary`],
   ['Drone speed', `${CRUISE_MS} m/s`],
+  ['S1 watched bands', PIPE.bands.map(([a, b]) => `${a}–${b}`).join(', ') + ' MHz'],
+  ['S2 platform self-noise', PIPE.selfNoise.map(([a, b]) => Math.round((a + b) / 2)).join(', ') + ' MHz'],
+  ['S3 detection margin', `${PIPE.marginDb} dB above floor`],
+  ['S4 target hop rate', `${PIPE.hopRate[0]}–${PIPE.hopRate[1]} hops/s (notional)`],
+  ['S5 persistence', `${PIPE.persistWin} × ${PIPE.winS} s windows`],
+  ['S5 convergence tolerance', `±${fmtM(PIPE.convTolM)}`],
 ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
 
 document.querySelectorAll('.tabs button').forEach((b, i) => b.addEventListener('click', () => { state.tab = i; state.hover = -1; state.pin = -1; if (state.t[i] >= sims[i].tEnd) state.t[i] = 0; setPlaying(!REDUCED || state.playing); syncControls(); updatePanel(); }));
@@ -1518,6 +1660,9 @@ const onSlider = (id, key, rebuild) => $(id).addEventListener('input', e => {
 onSlider('nEmit', 'n', () => { const f = state.t.map((t, i) => t / sims[i].tEnd); rebuildWorld(); state.t = f.map((x, i) => x * sims[i].tEnd); });
 onSlider('beam', 'beam', () => rebuildSims(true));
 onSlider('noise', 'noise', () => rebuildSims(true));
+onSlider('margin', 'margin', () => rebuildSims(true));
+onSlider('persist', 'persist', () => rebuildSims(true));
+onSlider('convTol', 'convTol', () => rebuildSims(true));
 $('refl').addEventListener('change', e => { state.refl = e.target.checked; rebuildSims(true); updatePanel(); });
 $('truth').addEventListener('change', e => { state.truth = e.target.checked; updatePanel(); });
 $('clutter').addEventListener('change', e => { state.clutter = e.target.checked; updatePanel(); });
