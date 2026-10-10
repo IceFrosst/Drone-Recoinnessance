@@ -170,26 +170,36 @@ All numbers are modelled, not field results. Across 8 maps × 3 altitudes, Front
 |---|---|---|---|---|
 | Live-tasking sim · wideband array + 180° arc | 72 fixes | 100% | 244 m | — |
 | Live-tasking sim · KrakenSDR + 180° arc | 48 fixes | 94% | 365 m | — |
-| Heat map · bladeRF + array fused · grid | 40/75 | 77% | 468 m | 14 |
-| Heat map · coherent array · grid (no arc) | 29/75 | 79% | 370 m | 15 |
-| Heat map · bearings · grid | 38/75 | 86% | 746 m | 19 |
-| Heat map · combined · grid | 31/75 | 78% | 587 m | 21 |
-| Heat map · combined · multi-angle | 36/75 | 93% | 469 m | 23 |
-| Heat map · combined · plan between flights | 35/75 | 81% | 573 m | 24 |
-| Heat map · strength only · aimed enemy | 5/75 | 38% | 5601 m | 30 |
-| Heat map · strength only · omni enemy | 21/75 | 84% | 1199 m | 17 |
-| Heat map · combined · single pass | 13/75 | 96% | 297 m | 24 |
+| Heat map · bladeRF + array fused · grid | 41/75 | 73% | 666 m | 16 |
+| Heat map · coherent array · grid (no arc) | 25/75 | 81% | 468 m | 13 |
+| Heat map · bearings · grid | 36/75 | 76% | 790 m | 19 |
+| Heat map · combined · grid | 31/75 | 77% | 948 m | 23 |
+| Heat map · combined · multi-angle | 37/75 | 91% | 653 m | 24 |
+| Heat map · combined · plan between flights | 38/75 | 74% | 586 m | 19 |
+| Heat map · strength only · aimed enemy | 3/75 | 45% | 5354 m | 27 |
+| Heat map · strength only · omni enemy | 22/75 | 79% | 1261 m | 24 |
+| Heat map · combined · single pass | 14/75 | 97% | 369 m | 25 |
 
 These rows count **control links only** (apples-to-apples with the live-tasking sim). The same payload also locates the other three target types — broken out here at the headline config (bladeRF · combined · crossing grid):
 
 | Target type | Located | Inside 95% | Median error | Ghosts |
 |---|---|---|---|---|
-| Drone operators (UAS) | 31/75 | 78% | 587 m | 21 |
-| Jammers (EW) | 15/24 | 100% | 225 m | 0 |
-| Command posts (C2) | 33/48 | 100% | 296 m | 0 |
-| Comms relays (COMMS) | 48/48 | 100% | 306 m | 0 |
+| Drone operators (UAS) | 31/75 | 77% | 948 m | 23 |
+| Jammers (EW) | 15/24 | 100% | 172 m | 0 |
+| Command posts (C2) | 33/48 | 100% | 242 m | 0 |
+| Comms relays (COMMS) | 48/48 | 100% | 357 m | 0 |
 
 The continuous, high-power emitters (jammers, command posts, relays) are far easier than the bursty, aimed, relocating operators: they transmit non-stop from a fixed point, so bearings converge, no left/right mirror survives (zero ghosts), and the 95% ellipse is conservative (100% inside). Operators are the hard case and drive the headline number down. This is the honest shape of passive RF — easy targets are easy, the tactical ones are hard.
+
+## Jamming effects (Frontline RF)
+
+A jammer does more than raise the noise floor, and with Frontline RF on the sim now models three ways it gets in the way — all scaled by how deep inside the jammer's bubble the aircraft is, and all shown on the map (a faint red "jammed" circle marks each bubble):
+
+- **Band blackout.** A signal sharing the jammer's band is *buried*, not merely attenuated, so detections of co-band targets collapse while the aircraft is inside the bubble.
+- **Bearing bias.** A strong co-band jammer drags a weaker signal's measured bearing toward itself and widens its error — the correlator is partly captured by the louder signal on the same channel. This is the main reason operator median error rises (≈590 m → ≈950 m) with the effects on.
+- **Front-end saturation spurs.** Deep in the bubble the receiver overloads and throws *phantom* detections whose bearing is a fixed offset from the aircraft's own boresight — a receiver artifact, not a ground source. As the aircraft turns they sweep the ground and never converge, so the convergence gate rejects them across flights; a rare one slips through as a **false fix** (drawn in red). The Final-result panel reports both counts: spurs rejected and false fixes that got through.
+
+Why the loud continuous targets still locate at ~100% even with these on: a jammer, command post or relay is heard from across the whole map, so losing the bursts recorded *inside* one bubble rarely changes the final fix. The jammer mainly costs you **operator accuracy** (co-band bias) and **false alarms** (spurs), not the easy fixes — which is the honest behaviour. These effects are off when Frontline RF is off (the clean illustration).
 
 Reading the control-link table. Every row runs the **same 5-stage filter**, so the differences are real, not bookkeeping:
 
