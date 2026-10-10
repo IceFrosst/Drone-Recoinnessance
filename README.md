@@ -4,6 +4,8 @@ A browser-based simulator of passive radio reconnaissance from a fixed-wing dron
 
 Open `index.html` in any browser. It is a single self-contained file with no build step, so it also deploys as-is to any static host (Vercel, Netlify, GitHub Pages).
 
+> **Two simulators in this repo.** `index.html` (described below) locates emitters **in the air**, during one mission, with a coherent direction-finding array. `heatmap.html` records on **several predefined flights** and builds the heat map **after landing**, on a cheaper two-channel bladeRF. See [Heat-Map Recon](#heat-map-recon-heatmaphtml) at the end for how the two differ and what the trade costs.
+
 ## What it shows
 
 - **Tab 1, Straight pass survey:** one straight line across the sector. Directional control stations aim at their own drones, so whether we cross a main beam decides who gets a tight fix and who stays vague.
@@ -98,3 +100,69 @@ Where field data would matter most, and what a real system still has to solve:
 - Weather and atmospheric ducting.
 - Downlink bandwidth, aircraft endurance, and survivability under fire.
 - The absence of ground truth in the field — here "error vs truth" is known only because the simulator placed the emitters.
+
+---
+
+
+# Heat-Map Recon (`heatmap.html`)
+
+A second simulator, same modelled battlefield and physics as `index.html`, but a different concept of operations and a different receiver. Open `heatmap.html` in any browser; like the first, it is one self-contained file and deploys to any static host. `heatmap.html#ALPHA1` opens a seed directly.
+
+Where the first simulator locates emitters **in the air, during one mission**, with a coherent direction-finding array, this one **records on several predefined flights and builds the heat map after landing**, on a cheaper bladeRF. It exists to answer one question: if you can only record now and process later, on two channels instead of five, flying fixed routes instead of chasing contacts — how much do you give up, and which choices matter?
+
+## What it shows
+
+- **Tab 1, Campaign:** fly a sequence of predefined routes over one map. Each flight only records; when it lands, the recordings become one probability grid per emitter, and the grids add into the heat map. The next flight is then flown (or, with planning on, chosen from the heat so far). Scrub the timeline through flights, the between-flight processing, and the gaps.
+- **Tab 2, Compare:** the same seed solved both ways, side by side — the live-tasking sim's crossed-bearing fixes against this one's heat map — plus a batch table across 8 maps and every setting.
+
+## The receiver: bladeRF 2.0 micro xA4
+
+The module is a bladeRF 2.0 micro xA4 (70 MHz–6 GHz, 56 MHz instantaneous bandwidth, two receive channels off one AD9361 clock, 12-bit, ~90 g, ~$540 direct). Two channels is the decisive property. With two phase-coherent channels the module measures a **cone angle** to the fuselage axis — accurate off the wingtip (broadside), ambiguous left/right of track, and needing a phase re-check after each retune. On a single channel it can only make a **strength map**. The page lets you switch between three methods on the same recordings:
+
+- **Bearings** — cross the two-channel cone angles across flights. One straight pass leaves a left/right mirror; crossing headings from different flights resolve it.
+- **Strength** — fit range to the 1/rⁿ falloff with the operator's transmit power unknown. This works against omni antennas and **fails against aimed ones**, because the signal peaks where the operator points their patch/yagi, not where they sit.
+- **Combined** — bearings carry the fix, strength trims the ambiguity.
+
+## Record now, map later
+
+The drone flies fixed routes and stores, per burst: frequency, a strength reading, a two-channel cone angle (unless strength-only), and the aircraft's believed position. Nothing is located in the air — no onboard compute, no downlink to detect or jam. After landing, each emitter's recordings are turned into a probability grid over the sector (a log-likelihood from the cone angles and/or the strength falloff, times a prior that a control station sits behind the enemy line), and the peak is the fix. A surviving second lobe is reported as a **ghost** — an unresolved mirror, left visible rather than hidden.
+
+Across flights, teams relocate and some change link settings (so a track breaks and must be rebuilt). **Memory** sets how fast old recordings are forgotten. **Planning** is the honest version of the heat-map-as-context idea: with it on, every route after the first aims at whatever the heat is still unsure about; off, all routes are fixed before the first takeoff.
+
+## How it differs from the live-tasking sim
+
+| | `index.html` (live tasking) | `heatmap.html` (this one) |
+|---|---|---|
+| When it locates | in the air, one mission | after landing, across flights |
+| Receiver | coherent array (KrakenSDR / USRP) | bladeRF, 2 channels (or 1 for strength) |
+| Routing | diverts to high-value targets in real time | predefined; fixed or planned between flights |
+| Memory | one flight, nothing kept | several flights accumulate |
+| Enemy | emitters fixed within a mission | teams relocate and retune between flights |
+
+## Batch results
+
+All numbers are modelled, not field results. Across 8 maps × 3 altitudes, Frontline RF on, teams relocating; "located" means a control station pinned to within ±4 km, and "inside 95%" is measured over all genuine fixes (not only the tight ones), so the located bar does not flatter it:
+
+| Setup | Located | Inside 95% | Median error | Ghosts |
+|---|---|---|---|---|
+| Live-tasking sim (coherent AoA) | 101 fixes | 100% | 183 m | — |
+| Heat map · bearings · grid | 39/75 | 86% | 669 m | 17 |
+| Heat map · combined · grid | 33/75 | 83% | 622 m | 19 |
+| Heat map · combined · multi-angle | 32/75 | 96% | 567 m | 20 |
+| Heat map · combined · plan between flights | 44/75 | 80% | 700 m | 18 |
+| Heat map · strength only · aimed enemy | 5/75 | 40% | 5212 m | 27 |
+| Heat map · strength only · omni enemy | 21/75 | 83% | 1251 m | 22 |
+| Heat map · combined · single pass | 14/75 | 100% | 349 m | 24 |
+
+Reading it:
+
+- The live-tasking sim locates more, tighter, in one flight — because it carries a coherent receiver and decides in the air. That capability is the whole cost difference.
+- The heat map gives most of that up for a record-only bladeRF and still pins most control stations, honestly (the truth falls inside the 95% ellipse most of the time on crossing-heading plans). A minority of fixes are **confidently wrong** — mostly single-heading plans whose mirror never got resolved — a real failure mode, shown on purpose, as in the live sim.
+- **Strength alone is the warning.** Against aimed antennas it barely locates anything; give the enemy stock omni antennas and the same method works. That gap is the entire case for the second channel.
+- **Flying more angles beats flying more lines.** Multi-angle and between-flight planning both beat parallel lines and a single pass, because crossing headings are what resolve the bearing mirror.
+
+## Honest limits specific to this page
+
+- The 95% ellipse is calibrated (×2.0 inflation) so the truth lands inside it ~80–96% of the time depending on the plan (96% for multi-angle, lower for grid and between-flight planning) — short of a true 95% on some plans, because the residual is genuine mislocation the fit cannot flag. The batch table's per-setup inside-95% column shows exactly where it is honest and where it is optimistic.
+- The strength method's range-from-power fit is deliberately naive (one unknown constant). A real system would use terrain and known-power references; this page shows the floor, not the ceiling.
+- Everything the first simulator does not model (validated hop fingerprint, 3D geolocation, fibre-optic FPV drones, real two-element calibration and mutual coupling, weather, endurance and survivability) is unmodelled here too. And as there, error-vs-truth is knowable only because the simulator placed the emitters.
