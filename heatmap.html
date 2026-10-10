@@ -1671,6 +1671,16 @@ const rxOf = cfg => cfg.rx === 'array'
 // Does the Kraken half of a fused payload own this emitter's band? (clean azimuth, no mirror, tighter)
 const krakenOwns = (rxt, fMHz) => rxt.fused && fMHz <= FUSED.krakenCeil;
 
+// Jammer realism (Frontline RF only): a strong jammer does more than raise the floor. Three effects,
+// scaled by how deep inside its bubble the aircraft is (desens, 0..JAM_DESENS_DB):
+//  (b) band blackout  — co-band signals are buried, not just attenuated, so detections collapse
+//  (c) bearing bias   — a strong co-band jammer drags a weaker signal's bearing toward itself
+//  (a) front-end spurs — saturation sprays phantom detections whose bearing tracks the aircraft, not
+//                        any ground point, so they never converge (the sorter must reject them; a few slip through)
+const JAM_BLACKOUT_DB = 4.5;        // desens above this starts to black out co-band signals
+const JAM_BLACKOUT_MAX = 0.94;      // deepest detection-probability cut at full desense
+const SPUR_DESENS_DB = 4;           // desens above this starts front-end saturation spurs
+const SPUR_MAX = 3;                 // phantom bursts per intercept at full saturation
 // Clutter the sorter cannot separate from a target (other links with the same band and fingerprint)
 const LEAK_U_TOL = 0.12;            // bearing methods: within this cone-angle difference the two are confusable
 const LEAK_P_BRG = 0.5;             // ... and a confusable burst is filed under the target at this rate
@@ -1917,6 +1927,11 @@ function flyFlight(W, cfg, ctx, k, plan) {
     const fr = W.front(py), gnssDepth = clamp((px - (fr.f - GNSS_BELT_WEST)) / GNSS_BELT_RAMP, 0, 1), inGnss = gnssDepth > 0.02;
     let jam = null; desens = 0;
     for (const J of W.jammers) { const dd = Math.hypot(px - J.x, py - J.y); if (dd < J.jamR) { const v = JAM_DESENS_DB * Math.sqrt(1 - (dd / J.jamR) ** 2); if (v > desens) { desens = v; jam = J; } } }
+    // The active jammer's occupied band (lo .. ~1.6×lo wideband noise) and its bearing from the aircraft,
+    // for the co-band blackout / bearing-bias / spur effects below.
+    const jamBand = jam ? [jam.fMHz * 0.92, jam.fMHz * 1.6 * 1.05] : null;
+    const inJamBand = f => !!jamBand && f >= jamBand[0] && f <= jamBand[1];
+    const azJam = jam ? azOf(jam.x - px, jam.y - py) : 0;
     congest = 0;
     if (cfg.realism) { let strong = 0; for (const q of E) if ((q.type === 'jam' || q.type === 'ctrl') && txOn(W, q, t, k)) strong++; congest = CONGEST_DB * clamp(strong / 4, 0, 1); }
     if (inGnss && !gnssIn) { gnssIn = true; const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; say(t, 'Entered the GNSS-denial belt. Positions stamped on the recordings now come from dead-reckoning and drift.', 'alert'); }
@@ -1949,7 +1964,10 @@ function flyFlight(W, cfg, ctx, k, plan) {
         if (cfg.realism) { const p1 = (q.idx * 1.7) % 6.283, p2 = (q.idx * 3.1 + 1) % 6.283; degrade += FADE_DEPTH_DB * 0.25 * (Math.sin(t / 11 + p1) + Math.sin(t / 27 + p2)); if (q.type !== 'jam') degrade -= congest; degrade -= AIRFRAME_MASK_DB * smooth(180 - AIRFRAME_SECTOR_DEG, 180, Math.abs(angDiff(azTrue, hdg))); }
         const snr0 = SNR_1KM_DB[q.type] - 10 * PATHLOSS_EXP * Math.log10(Math.max(slant, 100) / 1000) + gH + gV - cfg.noise - (q.type === 'jam' ? 0 : desens) + degrade;
         const snr = snr0 - (masked ? MASK_LOSS_DB : 0);
-        const pd = 1 / (1 + Math.exp(-(snr - DETECT_SNR_DB) / DETECT_SLOPE_DB));
+        // (b) Band blackout: a co-band jammer buries signals sharing its band, beyond the general desense.
+        const coBand = cfg.realism && cfg.jamFx !== false && jam && q.type !== 'jam' && inJamBand(q.fMHz);
+        let pd = 1 / (1 + Math.exp(-(snr - DETECT_SNR_DB) / DETECT_SLOPE_DB));
+        if (coBand) { const bo = clamp((desens - JAM_BLACKOUT_DB) / (JAM_DESENS_DB - JAM_BLACKOUT_DB), 0, 1); pd *= (1 - JAM_BLACKOUT_MAX * bo); }
         // coverage layer: everywhere we could plausibly have heard this control link
         if (q.type === 'ctrl' && horiz < COVER_R) { const ci = clamp(Math.round(nY / GC), 0, GCY - 1) * GCX + clamp(Math.round(nX / GC), 0, GCX - 1); cover[ci] = Math.max(cover[ci], pd); }
         if (R() >= pd || snr < cfg.margin) { if (pd >= MISS_MIN_P) { tr.nMiss++; } continue; }
@@ -1965,7 +1983,17 @@ function flyFlight(W, cfg, ctx, k, plan) {
         //  - fused: the Kraken owns its band (azimuth, tighter), the bladeRF owns the rest (cone).
         const kraken = rxt.array || krakenOwns(rxt, q.fMHz);          // this emitter solved on clean azimuth
         const dfSig = kraken ? ARRAY.sigMult : IFM_SIGMA_MULT;
-        const m = (!rxt.array && !rxt.fused && cfg.method === 'rss') ? { u: 0, az: 0, sR: 0, sB: 0 } : measure(snr, ep.x, ep.y, ep.z, d, dfSig);
+        const rssOnlyMode = !rxt.array && !rxt.fused && cfg.method === 'rss';
+        const m = rssOnlyMode ? { u: 0, az: 0, sR: 0, sB: 0 } : measure(snr, ep.x, ep.y, ep.z, d, dfSig);
+        // (c) Bearing bias: a strong co-band jammer drags a weaker signal's measured bearing toward itself,
+        // and widens its error — the correlator is partly captured by the louder jammer on the same channel.
+        if (coBand && !rssOnlyMode) {
+          const pull = clamp(0.12 + 0.6 * clamp(desens / Math.max(snr, 1), 0, 1), 0, 0.7);
+          m.az = (m.az + angDiff(azJam, m.az) * pull + 360) % 360;
+          const uJam = coneU(px, py, altZ, d, jam.x, jam.y, jam.z);
+          m.u = m.u + (uJam - m.u) * pull;
+          m.sR = Math.max(m.sR, 0.02) * (1 + 2.2 * pull);
+        }
         // Recorded strength = raw SNR + reading noise. The processor does NOT know the operator's
         // antenna pattern, so with aimed antennas their beam swing (gH) stays baked in as corruption;
         // with omni antennas gH is a near-constant that the unknown-power fit absorbs.
@@ -1987,6 +2015,25 @@ function flyFlight(W, cfg, ctx, k, plan) {
             if (confusable && R() < rxt.leakP) { F.stored++; addBurst(tr, { t, x: nX, y: nY, z: altZ, hx: d[0], hy: d[1], u: mu + R.norm() * (m.sR || 0.05), az: (cfAz + R.norm() * (m.sR || 0.05) * R2D + 360) % 360, useAz: kraken, sR: Math.max(m.sR, 0.05), sB: m.sB, ns: navSig, rss: cs + (cfg.realism ? R.norm() * RSS_MEAS_DB : 0), kind: 'mix' }); tr.cc.push(cf.pe.idx); }
           }
         }
+      }
+    }
+    // (a) Front-end saturation spurs: deep inside a jammer's bubble the receiver overloads and throws
+    // phantom detections. Their apparent bearing is a fixed offset from our own boresight (a receiver
+    // artifact), so as the aircraft turns they sweep the ground and never converge — the sorter must
+    // reject them across flights, and only a rare one slips through as a false fix.
+    if (cfg.realism && cfg.jamFx !== false && jam && desens >= SPUR_DESENS_DB) {
+      const sat = clamp((desens - SPUR_DESENS_DB) / (JAM_DESENS_DB - SPUR_DESENS_DB), 0, 1);
+      const key = 'spur:' + jam.idx;
+      let st = ctx.tracks.get(key);
+      if (!st) { st = { key, idx: -1 - jam.idx, gen: 0, e: { id: jam.id + '·spur', type: 'spur', fMHz: jam.fMHz }, id: jam.id + '·spur', type: 'spur', pstage: 5, post: null, bins: [], open: null, nDet: 0, nMiss: 0, nRej4: 0, maxSnr: -99, wins: new Set(), heard: new Set(), lastK: -1, lastT: -1e9, firstK: k, cc: [], spur: true, offset: (hashStr(jam.id) % 120) - 60 }; ctx.tracks.set(key, st); }
+      const nSpur = 1 + Math.floor(sat * (SPUR_MAX - 1));
+      for (let s = 0; s < nSpur; s++) {
+        if (R() > 0.45) continue;                                        // not every intercept
+        const spAz = (hdg + st.offset + R.norm() * 18 + 360) % 360;      // fixed offset from boresight = artifact
+        const uu = clamp(Math.cos((spAz - hdg) * D2R) + R.norm() * 0.1, -1, 1);
+        F.stored++; F.spur = (F.spur || 0) + 1;
+        addBurst(st, { t, x: nX, y: nY, z: altZ, hx: d[0], hy: d[1], u: uu, az: spAz, useAz: (rxt.array || rxt.fused), sR: 0.06, sB: 0.03, ns: navSig, rss: 28 + R.range(-4, 6), kind: 'spur' });
+        st.nDet++; st.lastT = t; st.heard.add(k);
       }
     }
     // --- background population: feeds the burst count and the sorter's clutter, never a target track
@@ -2193,7 +2240,7 @@ function beliefGrid(W, cfg, ctx, uptoFlight) {
   const grids = { ctrl: new Float32Array(GCN), jam: new Float32Array(GCN), c2: new Float32Array(GCN), relay: new Float32Array(GCN) };
   const perEmit = [];
   for (const tr of ctx.tracks.values()) {
-    if (!isHVT(tr.type) || !tr.bins.length) continue;
+    if ((!isHVT(tr.type) && tr.type !== 'spur') || !tr.bins.length) continue;
     let bins = tr.bins.filter(b => b.k <= uptoFlight).map(b => Object.assign({}, b, { w: mem(uptoFlight - b.k) })).filter(b => b.w > 0.01);
     if (bins.length < 4) continue;
     bins = capBins(bins);
@@ -2232,6 +2279,14 @@ function runCampaign(W, cfg) {
     // per-emitter report for this flight's processing
     const report = [];
     for (const { tr, sol } of bel.perEmit) {
+      if (tr.type === 'spur') {
+        // A front-end spur is not a real target. It counts as a FALSE POSITIVE only if it happened to
+        // converge tightly (the sorter was fooled); almost always its heading-locked bearings scatter and it is dropped.
+        const enoughGeom = sol.nHdg >= 2 && sol.nPos >= 3;
+        const falsePos = enoughGeom && sol.mainMass >= MAIN_MASS_OK && !sol.ghost && sol.el.a <= cfg.convTolM;
+        report.push({ id: tr.id, idx: tr.idx, type: 'spur', el: sol.el, pk: { x: sol.pkx, y: sol.pky }, located: false, reportable: false, falsePos, ghost: sol.ghost, nB: sol.nB, mainMass: sol.mainMass, nHdg: sol.nHdg, nPos: sol.nPos, why: 'front-end spur (rejected)' });
+        continue;
+      }
       const q = ctx.epochs[k][tr.idx];
       const truth = (tr.gen === q.gen) ? { x: q.x, y: q.y } : null;    // only current-generation tracks have a live truth
       // Classification: operators go through the fingerprint posterior (confusable with other hoppers); the
@@ -2269,7 +2324,9 @@ function runCampaign(W, cfg) {
       ghosts: last.filter(r => r.ghost && pred(r) && !r.located).length, medErr: med(loc.map(r => r.err)) };
   };
   const byType = {}; for (const ty of HVT) byType[ty] = agg(r => r.type === ty);
-  const summary = Object.assign(agg(r => isHVT(r.type)), { byType,
+  const falsePos = last.filter(r => r.falsePos).length;                              // spurs that fooled the sorter
+  const spurBursts = flights.reduce((a, f) => a + (f.F.spur || 0), 0);               // front-end spurs recorded + rejected
+  const summary = Object.assign(agg(r => isHVT(r.type)), { byType, falsePos, spurBursts,
     bursts: flights.reduce((a, f) => a + f.F.stored, 0), nF, totalLen: flights.reduce((a, f) => a + f.len, 0) });
   return { flights, perFlight, ctx, summary, cfg: Object.assign({}, cfg), nF };
 }
@@ -2292,66 +2349,66 @@ window.BATCH = {
   },
   {
    "name": "Heat map · bladeRF + array fused · grid",
-   "loc": "40/75",
-   "inside": 77,
-   "err": "468 m",
-   "ghost": 14
+   "loc": "41/75",
+   "inside": 73,
+   "err": "666 m",
+   "ghost": 16
   },
   {
    "name": "Heat map · coherent array · grid (no arc)",
-   "loc": "29/75",
-   "inside": 79,
-   "err": "370 m",
-   "ghost": 15
+   "loc": "25/75",
+   "inside": 81,
+   "err": "468 m",
+   "ghost": 13
   },
   {
    "name": "Heat map · bearings · grid",
-   "loc": "38/75",
-   "inside": 86,
-   "err": "746 m",
+   "loc": "36/75",
+   "inside": 76,
+   "err": "790 m",
    "ghost": 19
   },
   {
    "name": "Heat map · combined · grid",
    "loc": "31/75",
-   "inside": 78,
-   "err": "587 m",
-   "ghost": 21
-  },
-  {
-   "name": "Heat map · combined · multi-angle",
-   "loc": "36/75",
-   "inside": 93,
-   "err": "469 m",
+   "inside": 77,
+   "err": "948 m",
    "ghost": 23
   },
   {
-   "name": "Heat map · combined · plan between flights",
-   "loc": "35/75",
-   "inside": 81,
-   "err": "573 m",
+   "name": "Heat map · combined · multi-angle",
+   "loc": "37/75",
+   "inside": 91,
+   "err": "653 m",
    "ghost": 24
+  },
+  {
+   "name": "Heat map · combined · plan between flights",
+   "loc": "38/75",
+   "inside": 74,
+   "err": "586 m",
+   "ghost": 19
   },
   {
    "name": "Heat map · strength only · aimed enemy",
-   "loc": "5/75",
-   "inside": 38,
-   "err": "5601 m",
-   "ghost": 30
+   "loc": "3/75",
+   "inside": 45,
+   "err": "5354 m",
+   "ghost": 27
   },
   {
    "name": "Heat map · strength only · omni enemy",
-   "loc": "21/75",
-   "inside": 84,
-   "err": "1199 m",
-   "ghost": 17
+   "loc": "22/75",
+   "inside": 79,
+   "err": "1261 m",
+   "ghost": 24
   },
   {
    "name": "Heat map · combined · single pass",
-   "loc": "13/75",
-   "inside": 96,
-   "err": "297 m",
-   "ghost": 24
+   "loc": "14/75",
+   "inside": 97,
+   "err": "369 m",
+   "ghost": 25
   }
  ],
  "note": "8 maps × 3 altitudes, Frontline RF on, teams relocating. These rows count CONTROL LINKS only, so the receiver/arc/plan comparison stays apples-to-apples with the live-tasking sim. Every row runs the same 5-stage filter (band · self-noise · floor · signature · convergence). \"Located\" means pinned to within ±4 km across the campaign; the live-tasking rows are per-mission fixes. Inside-95% is over all genuine fixes, so the located bar does not flatter it. All numbers are modelled, not field results.",
@@ -2359,39 +2416,39 @@ window.BATCH = {
   {
    "name": "Drone operators (UAS)",
    "loc": "31/75",
-   "inside": 78,
-   "err": "587 m",
-   "ghost": 21
+   "inside": 77,
+   "err": "948 m",
+   "ghost": 23
   },
   {
    "name": "Jammers (EW)",
    "loc": "15/24",
    "inside": 100,
-   "err": "225 m",
+   "err": "172 m",
    "ghost": 0
   },
   {
    "name": "Command posts (C2)",
    "loc": "33/48",
    "inside": 100,
-   "err": "296 m",
+   "err": "242 m",
    "ghost": 0
   },
   {
    "name": "Comms relays (COMMS)",
    "loc": "48/48",
    "inside": 100,
-   "err": "306 m",
+   "err": "357 m",
    "ghost": 0
   }
  ],
  "typeNote": "Same payload (bladeRF · combined · crossing grid), same 8 maps × 3 altitudes, same 5-stage filter — broken out by target type. Continuous high-power emitters (jammers, command posts, relays) are easier and tighter than the bursty, aimed, relocating drone operators, so their fixes are reliable and their 95% ellipses conservative. GNSS spoofers are deliberately not modelled here.",
  "prose": [
-  "Decomposed with the filter identical on every row, the live-tasking sim's edge splits two ways. Band: a wideband array (hears 2.4 GHz) locates 72 control links with the arc; the same-band KrakenSDR locates 48. Arc: give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops from 48 at 365 m to 29/75 at 370 m. Both cost you real targets — neither is the whole story, and recording-then-mapping on fixed lines is the larger single loss.",
-  "Held to the same crossing-grid flights, the array and the bladeRF come out close (29/75 at 370 m vs 38/75 at 746 m). The array has fewer ghosts — five channels give a true azimuth with no mirror — but its tighter bearings are offset by a ~3× slower sweep (far fewer bursts per fix) and it is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears. The array's no-mirror edge pays off on single or parallel plans, where crossing headings are missing and the bladeRF cannot resolve its mirror.",
-  "Flying both receivers fused beats either alone: 40/75 located at 468 m, fewer ghosts than either. Each emitter goes to the receiver good at it — the Kraken takes the ≤1.77 GHz control links (clean azimuth, no mirror, tight), the bladeRF takes the 2.4 GHz operators the Kraken cannot hear. It nearly matches a single Kraken flown with the 180° arc, without needing in-air tasking — the cost is SWaP: two receivers (~$1.4k, ~490 g) on a small airframe.",
-  "Strength alone is the warning: against aimed antennas it locates 5/75, and the few fixes it makes are wrong. Give the enemy stock omni antennas and the same method locates 21/75 at 84% inside. That gap is the case for the second channel.",
-  "Flying more angles beats flying more lines: multi-angle (36/75) and planning each route between flights (35/75) both beat a single pass (13/75), because crossing headings are what resolve the bearing's left/right mirror — and the cheap bladeRF leans on that hardest.",
+  "Decomposed with the filter identical on every row, the live-tasking sim's edge splits two ways. Band: a wideband array (hears 2.4 GHz) locates 72 control links with the arc; the same-band KrakenSDR locates 48. Arc: give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops from 48 at 365 m to 25/75 at 468 m. Both cost you real targets — neither is the whole story, and recording-then-mapping on fixed lines is the larger single loss.",
+  "Held to the same crossing-grid flights, the array and the bladeRF come out close (25/75 at 468 m vs 36/75 at 790 m). The array has fewer ghosts — five channels give a true azimuth with no mirror — but its tighter bearings are offset by a ~3× slower sweep (far fewer bursts per fix) and it is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears. The array's no-mirror edge pays off on single or parallel plans, where crossing headings are missing and the bladeRF cannot resolve its mirror.",
+  "Flying both receivers fused beats either alone: 41/75 located at 666 m, fewer ghosts than either. Each emitter goes to the receiver good at it — the Kraken takes the ≤1.77 GHz control links (clean azimuth, no mirror, tight), the bladeRF takes the 2.4 GHz operators the Kraken cannot hear. It nearly matches a single Kraken flown with the 180° arc, without needing in-air tasking — the cost is SWaP: two receivers (~$1.4k, ~490 g) on a small airframe.",
+  "Strength alone is the warning: against aimed antennas it locates 3/75, and the few fixes it makes are wrong. Give the enemy stock omni antennas and the same method locates 22/75 at 79% inside. That gap is the case for the second channel.",
+  "Flying more angles beats flying more lines: multi-angle (37/75) and planning each route between flights (38/75) both beat a single pass (14/75), because crossing headings are what resolve the bearing's left/right mirror — and the cheap bladeRF leans on that hardest.",
   "The same payload picks up more than operators. Across target types, jammers (15/24), command posts (33/48) and comms relays (48/48) locate more reliably than the operators themselves (31/75) — they transmit continuously from fixed points, so the bearings converge and no left/right mirror survives. Operators are the hard case; the rest are the easy win."
  ]
 };
@@ -2576,6 +2633,18 @@ function draw(now) {
     ctx.globalAlpha = 1;
   }
 
+  // jammer bubbles: inside these the receiver desensitises, co-band signals black out, bearings bias,
+  // and the front end throws spurs. Shown when Frontline RF is on (the regime where those effects apply).
+  if (state.realism && world.jammers) {
+    for (const J of world.jammers) {
+      const r = J.jamR * s; if (r < 6) continue;
+      ctx.beginPath(); ctx.arc(X(J.x), Y(J.y), r, 0, 2 * Math.PI);
+      ctx.fillStyle = rgba(TYPE_COL.jam, 0.05); ctx.fill();
+      ctx.setLineDash([4, 5]); ctx.strokeStyle = rgba(TYPE_COL.jam, 0.4); ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]);
+      if (s > 0.01) halo('jammed', X(J.x), Y(J.y) - r + 12, rgba(TYPE_COL.jam, 0.8), FONT_DATA, 'center');
+    }
+  }
+
   // ground truth emitters
   if (state.truth) {
     const E = camp.ctx.epochs[Math.max(0, seg.k)];
@@ -2594,6 +2663,16 @@ function draw(now) {
   const hov = state.hover >= 0 ? state.hover : state.pin;
   const fixAlpha = state.film ? clamp((prog - 0.5) / 0.5, 0, 1) : 1;   // in Film mode the fixes bloom in the second half of the reveal
   if (fixAlpha > 0) for (const r of report) {
+    if (r.type === 'spur') {
+      // a front-end spur the sorter was fooled into reporting — a false fix, drawn in warning red
+      if (!r.falsePos) continue;
+      const ex = X(r.pk.x), ey = Y(r.pk.y);
+      ctx.globalAlpha = fixAlpha * 0.9;
+      ctx.beginPath(); ctx.ellipse(ex, ey, Math.max(r.el.a * s, 2), Math.max(r.el.b * s, 2), r.el.ang, 0, 2 * Math.PI); ctx.setLineDash([3, 3]); ctx.strokeStyle = rgba(COL.red, 0.9); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(ex - 5, ey - 5); ctx.lineTo(ex + 5, ey + 5); ctx.moveTo(ex + 5, ey - 5); ctx.lineTo(ex - 5, ey + 5); ctx.strokeStyle = rgba(COL.red, 0.95); ctx.lineWidth = 2; ctx.stroke();
+      halo('false (jammer spur)', ex + 9, ey + 10, rgba(COL.red, 0.95), FONT_DATA);
+      ctx.globalAlpha = 1; continue;
+    }
     if (!HVT.includes(r.type)) continue;
     const col = TYPE_COL[r.type];
     const dimmed = hov >= 0 && hov !== r.idx;
@@ -2728,6 +2807,7 @@ function updatePanel() {
     const bt = camp.summary.byType;
     const chips = HVT.map(ty => `<span class="tchip" style="--tc:${TYPE_COL[ty]}">${HVT_LABEL[ty]} <b>${bt[ty].located}/${bt[ty].targets}</b></span>`).join('');
     let html = `<div class="rsum"><b>${locs.length}</b> of <b>${camp.summary.targets}</b> high-value targets located · ${ghostN} ghost${ghostN === 1 ? '' : 's'}${state.truth && es.length ? ` · median error ${fmtM(med)}` : ''}</div>`;
+    if (state.realism && camp.summary.spurBursts > 0) html += `<div class="rsum" style="color:var(--red)">Jamming cost: ${camp.summary.spurBursts.toLocaleString('en-US')} front-end spurs rejected · ${camp.summary.falsePos} false fix${camp.summary.falsePos === 1 ? '' : 'es'} slipped through</div>`;
     html += `<div class="tchips">${chips}</div>`;
     html += locs.map(r => rrow(r, true)).join('') + cands.map(r => rrow(r, false)).join('');
     if (!locs.length && !cands.length) html += `<p class="empty">No target reached a confident, unambiguous fix. Add flights, cross more headings, or use the combined method.</p>`;
