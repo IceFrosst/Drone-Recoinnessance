@@ -276,6 +276,8 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
           <label><input type="checkbox" id="truth"> Ground truth</label>
           <label><input type="checkbox" id="clutter"> Airborne clutter</label>
           <label><input type="checkbox" id="realism"> Frontline RF</label>
+          <label><input type="checkbox" id="spectrum"> Show spectrum</label>
+          <label><input type="checkbox" id="priority"> HVT priority</label>
         </div>
         <div class="row">
           <label for="att">Array / attitude error <output id="attVal" for="att"></output></label>
@@ -328,6 +330,10 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
         <div><svg width="26" height="16"><path d="M13 1 L14 6 L24 8 L24 9.5 L14 9 L13.6 13 L16 14.5 L10 14.5 L12.4 13 L12 9 L2 9.5 L2 8 L12 6 Z" fill="#36d1be"/></svg>Our drone</div>
         <div><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="#36d1be" stroke-width="2"/></svg>FLOT (own line)</div>
         <div><svg width="26" height="10"><line x1="1" y1="5" x2="25" y2="5" stroke="#ff5f58" stroke-width="2" stroke-dasharray="6 4"/></svg>FLET (enemy line)</div>
+        <div><svg width="26" height="12"><rect x="1" y="1" width="24" height="10" fill="#f3b443" opacity=".16"/><line x1="4" y1="1" x2="4" y2="11" stroke="#f3b443" stroke-dasharray="2 2" opacity=".5"/></svg>GNSS-denied belt</div>
+        <div><svg width="26" height="12"><rect x="4" y="3" width="3" height="3" fill="#f3b443" opacity=".7"/><rect x="12" y="6" width="3" height="3" fill="#9fb2c8" opacity=".7"/><rect x="19" y="2" width="3" height="3" fill="#a78bff" opacity=".7"/></svg>Background spectrum</div>
+        <div><svg width="26" height="12"><circle cx="13" cy="6" r="6" fill="#f3b443" opacity=".25"/><circle cx="13" cy="6" r="3" fill="#f3b443" opacity=".4"/></svg>HVT priority belief</div>
+        <div><svg width="26" height="10"><line x1="1" y1="5" x2="13" y2="5" stroke="#36d1be" stroke-width="2"/><line x1="13" y1="5" x2="25" y2="5" stroke="#f3b443" stroke-width="2"/></svg>Flight out / return</div>
         <div><svg width="26" height="14"><rect x="1" y="2" width="11" height="9" fill="none" stroke="#36d1be" stroke-width="1.2"/><path d="M1 2 L12 11 M12 2 L1 11" stroke="#36d1be" stroke-width="1.2"/><path d="M19.5 1 L25 6.5 L19.5 12 L14 6.5 Z" fill="none" stroke="#ff5f58" stroke-width="1.2"/></svg>Own / enemy units</div>
         <div><svg width="26" height="14"><circle cx="13" cy="7" r="6" fill="rgba(54,209,190,.08)" stroke="#36d1be" stroke-dasharray="2 2"/></svg>Steep zone</div>
       </div>
@@ -339,6 +345,7 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
         <p>Bearings are combined by weighted least squares. Each bearing is weighted by its expected cross-range error, its angular error times its range, so strong bearings count more than faint ones. The 95% ellipse comes from the solution covariance, inflated when the bearings disagree more than the model expects. Bearings more than 3&sigma; from the fix are dropped one at a time, worst first, up to a quarter of them, so reflections and steep-zone bearings don't drag the fix away.</p>
         <p>Contacts are classified by signal fingerprint: band, hopping, cadence and bandwidth. Confidence builds burst by burst and grows faster on strong signals. A contact whose bearings never converge is treated as moving.</p>
         <p><strong>Dense spectrum and deinterleaving.</strong> The sector carries a configurable background population of friendly, civilian and other-unit emitters on top of the designated targets. Every emission becomes an anonymous burst, and an online clustering algorithm sorts the stream back into tracks by frequency, bandwidth, hop signature and bearing, with co-channel collisions and re-acquisition across silences. It scores itself against ground truth: each target is isolated, merged, split, or lost in the clutter, and the panel reports the tracks formed, the other control links found, and any false control-link tracks. Located fixes are the targets the deinterleaver could isolate; merged and split targets carry a widened, flagged ellipse.</p>
+        <p><strong>Mission profile and tasking.</strong> The survey flies a straight line out and returns to base. Pinpoint flies in, scores every candidate by value (control links highest, then jammers, then radios, weighted by confidence and by how rough the current fix is), diverts to the highest-value one, flies a single 180° arc to cut the bearing from a wide spread of angles, reports, and moves to the next until bingo fuel sends it home. A broad GNSS-denial belt runs along and behind the enemy line: inside it the drone navigates by dead-reckoning and its own position drifts, which widens every fix taken there. Comms jamming stays local, as bubbles around EW nodes. Operators hop across their whole band, and under Frontline RF a share of them retune mid-mission, which breaks the deinterleaver's track so the emitter reappears as a new one.</p>
         <p><strong>Five-stage classification pipeline.</strong> Every event the receiver hears runs through five gates in order: band, self-noise blanking, noise-floor margin, hop fingerprint, then persistence and geometric convergence. A signal must pass all five to be shown as a located transmitter. The cheap gates run first and discard the most, so the expensive direction-finding only runs on a shrinking candidate set. The simulator proves the logic flows — the right signals survive and clutter dies — but it does not prove the fingerprint separates a real target from real-world clutter. That proof needs a field recording, and the fingerprint values are placeholders until then.</p>
         <table id="constTable"></table>
         <p><strong>Frontline degradation (the "Frontline RF" toggle).</strong> A real sector adds error a clean model omits. Modelled here: array and aircraft-attitude bearing error (folded into the reported ellipse, so it stays honest); multipath fading that makes signal strength swing second to second; a near-far floor rise when the band is busy, which buries weak emitters; shadowing from our own airframe; and burst mis-association, where a burst is filed under the wrong nearby target and the convergence gate has to catch it. Turn it off to compare against the clean illustration.</p>
@@ -371,7 +378,7 @@ const CRUISE_MS = 30;               // ground speed, m/s (~108 km/h)
 const TURN_RATE_DEG_S = 4;          // max turn rate
 const STEP_S = 2;                   // simulation step
 const DWELL_S = 6;                  // receiver revisit: one bearing attempt per emitter per dwell
-const MISSION_MAX_S = 2700;         // 45 min on station
+const MISSION_MAX_S = 3900;         // 65 min: out to the objective and back (RTB)
 
 // Link budget: SNR on boresight at 1 km slant range, before pattern and terrain losses
 const SNR_1KM_DB = { ctrl: 46, jam: 82, radio: 40, video: 34 };
@@ -411,6 +418,8 @@ const REFLECT_RANGE_M = 9000;       // reflecting hill must be this close to the
 const JAM_DESENS_DB = 10;           // our receiver's noise rise inside a jammed zone
 const NAV_DRIFT_MS = 0.6;           // GNSS-denied navigation drift, m/s
 const NAV_GNSS_SIG_M = 5;           // own-position error with GNSS
+const GNSS_BELT_WEST = 3000;        // GNSS-denial belt starts this far behind our own line
+const GNSS_BELT_RAMP = 14000;       // drift reaches full rate this far east of that edge
 
 // Frontline degradation (the "Realistic RF" toggle). Effects a real sector adds that a
 // clean illustration omits. Attitude error is folded into the reported bearing sigma so the
@@ -713,6 +722,7 @@ function genWorld(seed, nEmit) {
     e.band = i === 0 ? '915 MHz' : sub === 'fpv' ? R.pick(['915 MHz', '915 MHz', '868 MHz', '868 MHz', '2.4 GHz']) : R.pick(['1.3 GHz', '1.3 GHz', '2.4 GHz']);
     e.fMHz = bandMHz(e.band);
     e.fp = { hop: true, hopRate: R.range(150, 500), burstMs: R.range(1, 6), burstBW: R.range(0.5, 2) };
+    e.hopSpan = e.band === '2.4 GHz' ? 60 : e.band === '1.3 GHz' ? 25 : 7;   // real ELRS hops across its whole band
     e.pclass = 'target';
     e.sig = sub === 'fpv' ? `${e.band} · frequency hopping · steady packet cadence` : `${e.band} · hopping command uplink · continuous`;
     e.subName = sub === 'fpv' ? 'FPV strike operator' : 'Recon UAS ground station';
@@ -781,8 +791,9 @@ function genWorld(seed, nEmit) {
     let x, y;
     if (R() < 0.5 && W.towns.length) { const tn = R.pick(W.towns); x = tn.x + R.norm() * 1500; y = tn.y + R.norm() * 1500; }
     else { y = R.range(1000, MAP_H - 1000); x = W.front(y).e + R.range(-18000, 14000); }
+    const pf = pt.band[Math.floor(R() * pt.band.length)];
     W.population.push({ idx: i, k: pt.k, label: pt.label, x: clamp(x, 500, MAP_W - 500), y: clamp(y, 500, MAP_H - 500),
-      fMHz: pt.band[Math.floor(R() * pt.band.length)], bw: pt.bw != null ? pt.bw : R.range(pt.bwR[0], pt.bwR[1]),
+      fMHz: pf, bw: pt.bw != null ? pt.bw : R.range(pt.bwR[0], pt.bwR[1]), hopSpan: pt.hop ? (pf > 2000 ? 60 : pf > 1000 ? 25 : 8) : 0,
       hop: !!pt.hop, hopRate: pt.hop ? R.range(pt.hr[0], pt.hr[1]) : 0, intervalS: R.range(pt.intv[0], pt.intv[1]), duty: pt.duty, pwr: pt.pwr });
   }
   return W;
@@ -1022,10 +1033,21 @@ function simulate(W, cfg, mode) {
   const F = { raw: 0, s1: 0, s2: 0, s3: 0, s4: 0 }, series = []; let nextWin = 0;
   const say = (t, text, kind = 'info') => events.push({ t, text, kind });
   const once = (tr, key, t, gap) => { if (t - (tr.ev[key] ?? -1e9) < gap) return false; tr.ev[key] = t; return true; };
-  const L = W.launch, wp = mode === 0 ? W.route1End : W.route2End;
+  const L = W.launch, wp = mode === 0 ? W.route1End : { x: clamp(W.front(W.route2End.y).e + 14000, 0, MAP_W - 3000), y: W.route2End.y };
   let px = L.x, py = L.y, hdg = azOf(wp.x - px, wp.y - py);
-  let dx = 0, dy = 0, dvx = 0, dvy = 0, jamIn = null, navSig = NAV_GNSS_SIG_M;
-  let phase = 'transit', target = null, ocx = 0, ocy = 0, lap = 0, prevA = null, lapsDone = 0, onStation = -1;
+  let dx = 0, dy = 0, dvx = 0, dvy = 0, gnssIn = null, commsIn = null, navSig = NAV_GNSS_SIG_M;
+  let phase = 'transit', leg = 'out', goal = { x: wp.x, y: wp.y }, target = null, ocx = 0, ocy = 0, arcAng = 0, prevA = null, arcDir = 1, onStation = -1;
+  const serviced = new Set(); let bingoSaid = false, arcT0 = 0;
+  // reactive adversary: a share of operators change hop rate / retune mid-mission, breaking the deinterleaver's track
+  const retune = ems.map(e => (cfg.realism && e.type === 'ctrl' && Rp() < 0.3) ? { at: Rp.range(MISSION_MAX_S * 0.35, MISSION_MAX_S * 0.65), hrMul: Rp() < 0.5 ? 0.3 : 2.6, df: Rp.range(-30, 30) } : null);
+  const hrAt = (e, t) => { const rt = retune[e.idx]; return rt && t > rt.at ? (e.fp.hopRate * rt.hrMul) : (e.fp ? e.fp.hopRate : 0); };
+  const fcAt = (e, t) => { const rt = retune[e.idx]; return e.fMHz + (rt && t > rt.at ? rt.df : 0); };
+  const valueOf = (tr, t) => {
+    if (!tr.fix || !tr.fix.valid || tr.fix.moving) return 0;
+    const pv = postView(tr.post, tr.fix), cw = pv.cls === 'ctrl' ? 1 : pv.cls === 'jam' ? 0.6 : pv.cls === 'radio' ? 0.25 : 0.05;
+    const rough = clamp(tr.fix.a / 500, 0.3, 3), recent = (t - tr.lastT) < LOCK_RECENT_S ? 1 : 0.3;
+    return cw * pv.conf * recent * (0.6 + 0.4 * rough);
+  };
   const oR = Math.max(ORBIT_R_MIN_M, alt * ORBIT_R_MULT);
   const next = ems.map(() => R.range(0, DWELL_S));
   let crossedF = false, crossedE = false, tEnd = MISSION_MAX_S;
@@ -1084,7 +1106,7 @@ function simulate(W, cfg, mode) {
     if (snr < cfg.margin || Rp() >= pd) return; F.s3++;
     if (pe.hop && inW(pe.hopRate, cfg.hopRate) && inW(pe.bw, cfg.burstBW)) F.s4++;
     const sigR = Math.hypot(SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * clamp((SNR_STRONG_DB - snr) / (SNR_STRONG_DB - DETECT_SNR_DB), 0, 1), cfg.realism ? cfg.attDeg : 0, cfg.realism ? REAL_RESID_DEG : 0);
-    clusterIngest({ t, f: pe.hop ? pe.fMHz + Rp.range(-4, 4) : pe.fMHz, bw: pe.bw, snr, az: (azTrue + Rp.norm() * sigR + 360) % 360, hop: pe.hop, hr: pe.hopRate + (pe.hop ? Rp.norm() * pe.hopRate * 0.08 : 0), x: nX, y: nY, sr: sigR * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, len: clamp(horiz + 2000, 3000, 26000), truth: 'pop:' + pe.idx });
+    clusterIngest({ t, f: pe.hop ? pe.fMHz + Rp.range(-pe.hopSpan / 2, pe.hopSpan / 2) : pe.fMHz, bw: pe.bw, snr, az: (azTrue + Rp.norm() * sigR + 360) % 360, hop: pe.hop, hr: pe.hopRate + (pe.hop ? Rp.norm() * pe.hopRate * 0.08 : 0), x: nX, y: nY, sr: sigR * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, len: clamp(horiz + 2000, 3000, 26000), truth: 'pop:' + pe.idx });
   };
   const clusterLoc = c => c.pstage === 5 && c.windows >= cfg.persistWin && c.fix && c.fix.valid && !c.fix.moving && c.fix.a <= cfg.convTolM;
 
@@ -1176,7 +1198,7 @@ function simulate(W, cfg, mode) {
     }
     tr.b.push({ t, x: nX, y: nY, az: (az + 360) % 360, sr: sigReported * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, kind, len: clamp(len, 3000, 26000), snr });
     classifyBurst(R, tr, snr);
-    clusterIngest({ t, f: e.fMHz + ((e.fp && e.fp.hop) ? R.range(-3, 3) : 0), bw: e.fp ? e.fp.burstBW : (e.type === 'jam' ? 20 : e.type === 'video' ? 12 : e.type === 'radio' ? 0.025 : 1), snr, az: (az + 360) % 360, hop: !!(e.fp && e.fp.hop), hr: e.fp ? e.fp.hopRate : 0, x: nX, y: nY, sr: sigReported * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, len: clamp(len, 3000, 26000), truth: 'tgt:' + e.idx });
+    clusterIngest({ t, f: fcAt(e, t) + ((e.fp && e.fp.hop) ? Rp.range(-e.hopSpan / 2, e.hopSpan / 2) : 0), bw: e.fp ? e.fp.burstBW : (e.type === 'jam' ? 20 : e.type === 'video' ? 12 : e.type === 'radio' ? 0.025 : 1), snr, az: (az + 360) % 360, hop: !!(e.fp && e.fp.hop), hr: hrAt(e, t), x: nX, y: nY, sr: sigReported * D2R, ns: navSig, cs: cfg.realism ? cfg.attDeg * D2R : 0, len: clamp(len, 3000, 26000), truth: 'tgt:' + e.idx });
     // narration
     if (tr.firstT < 0) { tr.firstT = t; say(t, `New contact ${e.id}: ${e.sig}. Bearing ${fmtAz(az)}.`); }
     if (e.type === 'ctrl' && lobe !== tr.lastLobe && once(tr, 'lobe', t, 200)) {
@@ -1192,27 +1214,27 @@ function simulate(W, cfg, mode) {
   for (let t = 0; t <= MISSION_MAX_S; t += STEP_S) {
     // --- guidance
     let want;
-    if (phase === 'orbit') {
-      if (target.fix && target.fix.valid) { ocx += (target.fix.x - ocx) * 0.08; ocy += (target.fix.y - ocy) * 0.08; }
+    if (phase === 'arc') {
+      if (target.fix && target.fix.valid) { ocx += (target.fix.x - ocx) * 0.1; ocy += (target.fix.y - ocy) * 0.1; }
       const rx = px - ocx, ry = py - ocy, r = Math.hypot(rx, ry);
-      want = azOf(rx, ry) + 90 + Math.atan(2 * (r - oR) / oR) * R2D;      // clockwise orbit
-    } else want = azOf(wp.x - px, wp.y - py);
+      want = azOf(rx, ry) + 90 * arcDir + Math.atan(2 * (r - oR) / oR) * R2D;
+    } else want = azOf(goal.x - px, goal.y - py);
     const turn = clamp(angDiff(want, hdg), -TURN_RATE_DEG_S * STEP_S, TURN_RATE_DEG_S * STEP_S);
     hdg = (hdg + turn + 360) % 360;
-    if (t > 0) { const d = dirOf(hdg); px += d[0] * CRUISE_MS * STEP_S; py += d[1] * CRUISE_MS * STEP_S; }
+    if (t > 0) { const d = dirOf(hdg); px = clamp(px + d[0] * CRUISE_MS * STEP_S, 0, MAP_W); py = clamp(py + d[1] * CRUISE_MS * STEP_S, 0, MAP_H); }
 
-    // --- electronic warfare: GNSS denial and receiver desensitisation
+    // --- electronic warfare: a broad GNSS-denial belt along the front, plus local comms-jamming bubbles
+    const fr = W.front(py), gnssEdge = fr.f - GNSS_BELT_WEST, gnssDepth = clamp((px - gnssEdge) / GNSS_BELT_RAMP, 0, 1), inGnss = gnssDepth > 0.02;
     let jam = null, desens = 0;
     for (const J of W.jammers) { const d = Math.hypot(px - J.x, py - J.y); if (d < J.jamR) { const v = JAM_DESENS_DB * Math.sqrt(1 - (d / J.jamR) ** 2); if (v > desens) { desens = v; jam = J; } } }
-    // near-far congestion: a busy band raises the floor for weak signals
     let congest = 0;
     if (cfg.realism) { let strong = 0; for (const em of ems) { if ((em.type === 'jam' || em.type === 'ctrl') && txAt(W, em, t)) strong++; } congest = CONGEST_DB * clamp(strong / 4, 0, 1); }
-    if (jam && !jamIn) { jamIn = jam; const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; say(t, `Entered ${jam.id}'s jammed zone. GNSS denied, navigation drifting, receiver desensitised.`, 'alert'); }
-    else if (!jam && jamIn) { say(t, `Left ${jamIn.id}'s zone. GNSS back; position had drifted ${fmtM(Math.hypot(dx, dy))}.`); jamIn = null; dx = dy = 0; }
-    if (jamIn) { dx += dvx * STEP_S; dy += dvy * STEP_S; navSig += NAV_DRIFT_MS * STEP_S; } else navSig = NAV_GNSS_SIG_M;
+    if (inGnss && !gnssIn) { gnssIn = 1; const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; say(t, 'Entered the GNSS-denial belt along the front. Navigation on dead-reckoning; position will drift until we are clear.', 'alert'); }
+    else if (!inGnss && gnssIn) { say(t, `Clear of the GNSS belt. Fix restored; position had drifted ${fmtM(Math.hypot(dx, dy))}.`); gnssIn = null; dx = dy = 0; }
+    if (jam && !commsIn) { commsIn = jam; say(t, `Inside ${jam.id}'s comms-jamming bubble: receiver desensitised.`, 'alert'); }
+    else if (!jam && commsIn) { commsIn = null; }
+    if (inGnss) { if (Math.floor(t / 150) !== Math.floor((t - STEP_S) / 150)) { const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; } dx += dvx * gnssDepth * STEP_S; dy += dvy * gnssDepth * STEP_S; navSig = NAV_GNSS_SIG_M + Math.hypot(dx, dy); } else navSig = NAV_GNSS_SIG_M;
     const nX = px + dx, nY = py + dy;
-
-    const fr = W.front(py);
     if (!crossedF && px > fr.f) { crossedF = true; say(t, 'Crossed our forward line (FLOT) into the grey zone.'); }
     if (!crossedE && px > fr.e) { crossedE = true; say(t, 'Crossed the enemy forward line (FLET). Over enemy territory.'); }
 
@@ -1226,35 +1248,42 @@ function simulate(W, cfg, mode) {
     }
     { const sn = Rp.int(10, 22); F.raw += sn; F.s1 += sn; }   // our platform's own emissions: heard, in band, blanked at Stage 2
 
-    // --- Pinpoint mode: lock, orbit, report
-    if (mode === 1) {
-      if (phase === 'transit') {
-        let best = null, bestP = 0;
+    // --- value-driven tasking: score candidates, divert to the highest-value one, fly a 180° arc to refine
+    if (phase === 'arc') {
+      const rx = px - ocx, ry = py - ocy, r = Math.hypot(rx, ry), a = azOf(rx, ry);
+      const inB = Math.abs(r - oR) < 0.4 * oR;
+      if (inB && onStation < 0) onStation = t;
+      if (prevA !== null && inB) arcAng += Math.abs(angDiff(a, prevA));
+      prevA = a;
+      const f = target.fix;
+      let done = null;
+      if (arcAng >= 180 && f && f.valid) done = ['good', `Arc complete on ${target.e.id}: ±${fmtM(f.a)} (95%) from ${f.nUsed} bearings.`];
+      else if (!f || !f.valid) done = ['warn', `Lost the fix on ${target.e.id} during the arc. Moving on.`];
+      else if (onStation >= 0 && t - Math.max(target.lastT, onStation) > SILENT_GIVEUP_S) done = ['warn', `${target.e.id} went quiet mid-arc. Reporting ±${fmtM(f ? f.a : NaN)} and moving on.`];
+      else if (arcAng >= 320 || t - arcT0 > 540) done = ['info', `Arc flown on ${target.e.id}: ±${fmtM(f ? f.a : NaN)}.`];
+      if (done) { say(t, done[1], done[0]); target.done = true; target.reported = target.fix; serviced.add(target.i); target = null; phase = 'transit'; }
+    } else {
+      if (mode === 1 && leg === 'out' && phase !== 'arc' && t > MISSION_MAX_S * 0.45) { leg = 'back'; target = null; goal = { x: L.x, y: L.y }; if (!bingoSaid) { bingoSaid = true; say(t, 'Bingo fuel: breaking off tasking and returning to base.', 'warn'); } }
+      if (mode === 1 && leg === 'out' && !target) {
+        let best = null, bestV = 0;
         for (const tr of tracks) {
-          if (tr.done || tr.pstage !== 5 || (tr.windows || 0) < cfg.persistWin || tr.nDet < LOCK_MIN_BURSTS || !tr.fix || !tr.fix.valid || tr.fix.moving || tr.fix.a > LOCK_FIX_MAX_M || t - tr.lastT > LOCK_RECENT_S) continue;
-          const pv = postView(tr.post, tr.fix);
-          if (pv.cls === 'ctrl' && pv.conf >= LOCK_CONF && pv.conf > bestP) { best = tr; bestP = pv.conf; }
+          if (tr.done || serviced.has(tr.i) || tr.pstage !== 5 || (tr.windows || 0) < cfg.persistWin || tr.nDet < LOCK_MIN_BURSTS || !tr.fix || !tr.fix.valid || tr.fix.moving || tr.fix.a > LOCK_FIX_MAX_M || t - tr.lastT > LOCK_RECENT_S) continue;
+          const v = valueOf(tr, t); if (v > bestV) { bestV = v; best = tr; }
         }
-        if (best) {
-          target = best; phase = 'orbit'; ocx = best.fix.x; ocy = best.fix.y; lap = 0; prevA = null; lapsDone = 0; onStation = -1;
-          const louder = tracks.filter(tr => tr !== best && tr.nDet > 0 && tr.maxSnr > best.maxSnr && postView(tr.post, tr.fix).cls !== 'ctrl')
-            .sort((a, b) => b.maxSnr - a.maxSnr).slice(0, 2)
-            .map(tr => `${tr.e.id} (${TYPE_NAME[postView(tr.post, tr.fix).cls].toLowerCase()})`);
-          say(t, `Locked on ${best.e.id}: drone control link at ${pct(bestP)} after ${best.nDet} bursts, stationary. Rough fix ±${fmtM(best.fix.a)}.${louder.length ? ' Ignored louder ' + louder.join(' and ') + '.' : ''} Orbiting at ${fmtM(oR)}.`, 'good');
+        if (best && bestV > 0.3) { const pv = postView(best.post, best.fix); target = best; goal = { x: best.fix.x, y: best.fix.y }; say(t, `Priority target ${best.e.id}: ${TYPE_NAME[pv.cls].toLowerCase()} at ${pct(pv.conf)}, value ${bestV.toFixed(2)}. Diverting to refine, rough fix ±${fmtM(best.fix.a)}.`, 'good'); }
+      }
+      if (target) {
+        goal = { x: target.fix.x, y: target.fix.y };
+        if (Math.abs(Math.hypot(px - target.fix.x, py - target.fix.y) - oR) < 0.45 * oR) {
+          phase = 'arc'; ocx = target.fix.x; ocy = target.fix.y; arcAng = 0; prevA = null; onStation = -1; arcT0 = t;
+          arcDir = angDiff(azOf(target.fix.x - px, target.fix.y - py), hdg) > 0 ? 1 : -1;
+          say(t, `On station at ${target.e.id}. Flying a 180° arc for the cross-cut.`, 'good');
         }
-      } else {
-        const rx = px - ocx, ry = py - ocy, r = Math.hypot(rx, ry), a = azOf(rx, ry);
-        const inBand = Math.abs(r - oR) < 0.35 * oR;
-        if (inBand && onStation < 0) onStation = t;
-        if (prevA !== null && inBand) lap += Math.abs(angDiff(a, prevA));
-        prevA = a;
-        const f = target.fix;
-        if (Math.floor(lap / 360) > lapsDone) { lapsDone++; say(t, `Lap ${lapsDone} around ${target.e.id}: uncertainty ±${fmtM(f ? f.a : NaN)} (95%).`); }
-        let exit = null;
-        if (lap >= 270 && f && f.valid && f.a <= FIX_DONE_M) exit = ['good', `Fix on ${target.e.id} reported: ±${fmtM(f.a)} (95%) from ${f.nUsed} bearings. Resuming transit.`];
-        else if (lap >= 360 * ORBIT_MAX_LAPS) exit = ['info', `${ORBIT_MAX_LAPS} laps flown. Reporting ${target.e.id} at ±${fmtM(f ? f.a : NaN)} and moving on.`];
-        else if (onStation >= 0 && t - Math.max(target.lastT, onStation) > SILENT_GIVEUP_S) exit = ['warn', `Nothing heard from ${target.e.id} in ${Math.round((t - Math.max(target.lastT, onStation)) / 60)} min on station. Reporting best fix ±${fmtM(f ? f.a : NaN)} and moving on.`];
-        if (exit) { say(t, exit[1], exit[0]); target.done = true; target.reported = f; phase = 'transit'; }
+      } else if (leg === 'out') goal = { x: wp.x, y: wp.y };
+      const atGoal = Math.hypot(goal.x - px, goal.y - py) < 700;
+      if (atGoal && !target && phase !== 'arc') {
+        if (leg === 'out') { leg = 'back'; goal = { x: L.x, y: L.y }; say(t, `${mode === 0 ? 'Survey line complete' : 'No further priority targets in reach'}. Returning to base.`); }
+        else { tEnd = t; break; }
       }
     }
 
@@ -1266,9 +1295,7 @@ function simulate(W, cfg, mode) {
     }
 
     path.t.push(t); path.x.push(px); path.y.push(py); path.h.push(hdg); path.nx.push(nX); path.ny.push(nY);
-    path.ph.push(phase === 'orbit' ? 1 : 0); path.ocx.push(ocx); path.ocy.push(ocy); path.tg.push(target ? target.i : -1); path.lap.push(lap);
-
-    if (phase === 'transit' && Math.hypot(wp.x - px, wp.y - py) < 600) { tEnd = t; break; }
+    path.ph.push(phase === 'arc' ? 1 : leg === 'back' ? 2 : 0); path.ocx.push(ocx); path.ocy.push(ocy); path.tg.push(target ? target.i : -1); path.lap.push(arcAng);
     tEnd = t;
   }
   for (const tr of tracks) if (tr.b.length && (!tr.snaps.length || tr.snaps[tr.snaps.length - 1].n !== tr.b.length)) { tr.fix = solveFix(tr.b, tr.b.length, alt, tr.fix); tr.snaps.push({ t: tr.b[tr.b.length - 1].t, n: tr.b.length, fix: tr.fix, post: tr.post.slice(), nDet: tr.nDet, nMiss: tr.nMiss, lobes: tr.lobes.slice(), windows: tr.windows, rej4: tr.nRej4 }); }
@@ -1310,7 +1337,7 @@ function simulate(W, cfg, mode) {
     say(tEnd, `Pass complete: ${parts.join('; ')}.`, 'good');
   } else {
     const rep = tracks.filter(tr => tr.reported).map(tr => `${tr.e.id} ±${fmtM(tr.reported.a)}`);
-    if (phase === 'orbit' && target) rep.push(`${target.e.id} ±${fmtM(target.fix ? target.fix.a : NaN)} (still orbiting)`);
+    if (phase === 'arc' && target) rep.push(`${target.e.id} ±${fmtM(target.fix ? target.fix.a : NaN)} (mid-arc)`);
     say(tEnd, rep.length ? `Mission end. Pinpointed ${rep.join(', ')}. Everything else is from transit only.` : 'Mission end. No contact passed all five gates as a stationary control link, so no orbit was flown.', rep.length ? 'good' : 'warn');
   }
   return { mode, tracks, path, misses, events, tEnd, alt, altZ, oR, wp, deint, pipe: { series, params: { persistWin: cfg.persistWin, convTolM: cfg.convTolM, margin: cfg.margin, winS: cfg.winS, bands: cfg.bands, selfNoise: cfg.selfNoise, hopRate: cfg.hopRate, burstMs: cfg.burstMs, burstBW: cfg.burstBW } } };
@@ -1410,7 +1437,7 @@ const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:
 
 const cvs = document.getElementById('map'), ctx = cvs.getContext('2d');
 const view = { cx: MAP_W / 2, cy: MAP_H / 2, s: 0.02, w: 800, h: 600, dpr: 1, fitted: false };
-const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM, realism: true, att: ATT_ERR_DEG, density: 150 };
+const state = { seed: 'ALPHA1', n: 6, alt: 1, beam: BEAM_WIDTH_DEG, noise: 2, refl: true, truth: true, clutter: true, tab: 0, playing: !REDUCED, speed: 40, t: [0, 0], follow: false, hover: -1, pin: -1, margin: PIPE.marginDb, persist: PIPE.persistWin, convTol: PIPE.convTolM, realism: true, att: ATT_ERR_DEG, density: 150, spectrum: true, priority: true };
 const hlIdx = () => state.hover >= 0 ? state.hover : state.pin;
 let world = null, sims = null;
 
@@ -1458,12 +1485,27 @@ function draw(now) {
   ctx.strokeStyle = 'rgba(150,180,210,0.09)'; ctx.lineWidth = 1; ctx.stroke();
   ctx.strokeStyle = 'rgba(150,180,210,0.3)'; ctx.strokeRect(X(0), Y(0), MAP_W * s, MAP_H * s);
 
-  // jammed zones
+  // GNSS-denial belt: broad, along and behind the enemy line, deepening eastward
+  {
+    const edge = y => world.front(y).f - GNSS_BELT_WEST;
+    ctx.beginPath();
+    for (let k = 0; k < world.fe.length; k++) { const y = k * FRONT_STEP, x = edge(y); k ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)); }
+    ctx.lineTo(X(MAP_W), Y(MAP_H)); ctx.lineTo(X(MAP_W), Y(0)); ctx.closePath();
+    const g = ctx.createLinearGradient(X(edge(MAP_H / 2)), 0, X(MAP_W), 0);
+    g.addColorStop(0, rgba(COL.amber, 0)); g.addColorStop(0.5, rgba(COL.amber, 0.05)); g.addColorStop(1, rgba(COL.amber, 0.11));
+    ctx.fillStyle = g; ctx.fill();
+    ctx.beginPath();
+    for (let k = 0; k < world.fe.length; k++) { const y = k * FRONT_STEP, x = edge(y); k ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)); }
+    ctx.setLineDash([3, 5]); ctx.strokeStyle = rgba(COL.amber, 0.38); ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
+    halo('GNSS DENIED', X(edge(MAP_H * 0.1) + 8500), Y(MAP_H * 0.1), rgba(COL.amber, 0.72), FONT_LABEL, 'left');
+  }
+
+  // jammed zones (local comms jamming)
   for (const J of world.jammers) {
     ctx.beginPath(); ctx.arc(X(J.x), Y(J.y), J.jamR * s, 0, 2 * Math.PI);
     ctx.fillStyle = rgba(COL.purple, 0.075); ctx.fill();
     ctx.setLineDash([6, 5]); ctx.strokeStyle = rgba(COL.purple, 0.55); ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]);
-    halo(`EW ZONE ${J.id}`, X(J.x), Y(J.y - J.jamR) + 10, rgba(COL.purple, 0.95), FONT_LABEL, 'center');
+    halo(`COMMS JAM ${J.id}`, X(J.x), Y(J.y - J.jamR) + 10, rgba(COL.purple, 0.95), FONT_LABEL, 'center');
   }
 
   // front lines
@@ -1574,6 +1616,30 @@ function draw(now) {
     }
   }
 
+  // background spectrum: the dense clutter the receiver must sort through
+  if (state.spectrum && world.population && s > 0.006) {
+    const nd = Math.min(state.density, world.population.length);
+    for (let i = 0; i < nd; i++) {
+      const pe = world.population[i];
+      ctx.fillStyle = pe.k === 'link' ? rgba(COL.amber, 0.5) : pe.k === 'wifi' ? rgba(COL.purple, 0.42) : rgba(COL.slate, 0.4);
+      ctx.fillRect(X(pe.x) - 1, Y(pe.y) - 1, 2, 2);
+    }
+  }
+  // HVT priority surface: belief blobs over likely high-value targets, shrinking as fixes tighten
+  if (state.priority) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (const tr of sim.tracks) {
+      const snap = snapAt(tr, t); if (!snap || !snap.fix || !snap.fix.valid || snap.fix.moving) continue;
+      const pv = postView(snap.post, snap.fix); if (pv.cls !== 'ctrl' && pv.cls !== 'jam') continue;
+      const val = (pv.cls === 'ctrl' ? 1 : 0.55) * pv.conf, f = snap.fix, col = pv.cls === 'ctrl' ? COL.amber : COL.purple;
+      const rad = Math.max(Math.max(f.a, 700) * s * 1.5, 10);
+      const g = ctx.createRadialGradient(X(f.x), Y(f.y), 0, X(f.x), Y(f.y), rad);
+      g.addColorStop(0, rgba(col, 0.3 * val)); g.addColorStop(1, rgba(col, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X(f.x), Y(f.y), rad, 0, 2 * Math.PI); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   // estimates (located transmitters only: survivors of all five pipeline gates)
   for (const tr of sim.tracks) {
     const snap = snapAt(tr, t); if (!isLocated(tr, snap, sim.pipe.params)) continue;
@@ -1592,7 +1658,6 @@ function draw(now) {
 
   // emitters (ground truth)
   if (state.truth) {
-    if (s > 0.008 && world.population) { ctx.fillStyle = 'rgba(159,178,200,0.36)'; const nd = Math.min(state.density, world.population.length); for (let i = 0; i < nd; i++) { const pe = world.population[i]; ctx.fillRect(X(pe.x) - 0.8, Y(pe.y) - 0.8, 1.6, 1.6); } }
     const pulse = REDUCED ? 0.5 : (now / 1600) % 1;
     for (const e of ems) {
       if (e.type === 'video') continue;
@@ -1617,12 +1682,13 @@ function draw(now) {
   if (p.ph === 1) {
     ctx.beginPath(); ctx.arc(X(p.ocx), Y(p.ocy), sim.oR * s, 0, 2 * Math.PI);
     ctx.setLineDash([7, 6]); ctx.strokeStyle = rgba(COL.teal, 0.5); ctx.lineWidth = 1.3; ctx.stroke(); ctx.setLineDash([]);
-    halo('ORBIT', X(p.ocx), Y(p.ocy - sim.oR) - 9, rgba(COL.teal, 0.9), FONT_LABEL, 'center');
+    halo('180° ARC', X(p.ocx), Y(p.ocy - sim.oR) - 9, rgba(COL.teal, 0.9), FONT_LABEL, 'center');
   }
   {
-    const P = sim.path; ctx.beginPath();
-    for (let i = 0; i <= p.i; i++) i ? ctx.lineTo(X(P.x[i]), Y(P.y[i])) : ctx.moveTo(X(P.x[i]), Y(P.y[i]));
-    ctx.lineTo(X(p.x), Y(p.y)); ctx.strokeStyle = rgba(COL.teal, 0.75); ctx.lineWidth = 1.7; ctx.stroke();
+    const P = sim.path;
+    const seg = (pred, color, addCur) => { ctx.beginPath(); let st = false; for (let i = 0; i <= p.i; i++) { if (!pred(P.ph[i])) { st = false; continue; } const xx = X(P.x[i]), yy = Y(P.y[i]); if (!st) { ctx.moveTo(xx, yy); st = true; } else ctx.lineTo(xx, yy); } if (addCur && st) ctx.lineTo(X(p.x), Y(p.y)); ctx.strokeStyle = color; ctx.lineWidth = 1.7; ctx.stroke(); };
+    seg(ph => ph !== 2, rgba(COL.teal, 0.75), p.ph !== 2);   // outbound / tasking
+    seg(ph => ph === 2, rgba(COL.amber, 0.7), p.ph === 2);   // return to base
   }
   const rs = sim.alt * s;
   ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), rs, 0, 2 * Math.PI);
@@ -1687,7 +1753,7 @@ function updatePanel() {
   $('scrub').value = Math.round(t / sim.tEnd * 1000);
   $('briefTitle').textContent = BRIEF[state.tab].title; $('briefText').textContent = BRIEF[state.tab].text;
   const altTxt = `ALT ${sim.alt.toLocaleString('en-US')} m`;
-  $('briefStatus').textContent = p.ph === 1 ? `${altTxt} · ORBIT ${world.emitters[p.tg].id} · LAP ${(p.lap / 360).toFixed(1)}` : `${altTxt} · ${t >= sim.tEnd ? 'MISSION COMPLETE' : 'TRANSIT'} · HDG ${fmtAz(p.h)}`;
+  $('briefStatus').textContent = p.ph === 1 ? `${altTxt} · ARC ${p.tg >= 0 ? world.emitters[p.tg].id : ''} · ${Math.round(p.lap)}°` : `${altTxt} · ${t >= sim.tEnd ? 'MISSION COMPLETE' : p.ph === 2 ? 'RTB' : 'TRANSIT'} · HDG ${fmtAz(p.h)}`;
 
   // contacts at time t
   const PP = sim.pipe.params;
@@ -1803,7 +1869,7 @@ function syncControls() {
   $('noise').value = state.noise; $('noiseVal').textContent = '+' + state.noise + ' dB';
   $('refl').checked = state.refl; $('truth').checked = state.truth; $('clutter').checked = state.clutter;
   $('density').value = state.density; $('densityVal').textContent = state.density + ' emitters';
-  $('realism').checked = state.realism; $('att').value = state.att; $('att').disabled = !state.realism;
+  $('realism').checked = state.realism; $('spectrum').checked = state.spectrum; $('priority').checked = state.priority; $('att').value = state.att; $('att').disabled = !state.realism;
   $('attVal').textContent = state.realism ? '±' + state.att + '°' : 'off';
   $('realNote').textContent = state.realism ? 'On: multipath fading, our-airframe shadowing, near-far floor rise, and burst mis-association are modelled.' : 'Off: clean illustration — one clear path to each emitter.';
   const a = ALTITUDES[state.alt];
@@ -1877,6 +1943,8 @@ $('realism').addEventListener('change', e => { state.realism = e.target.checked;
 onSlider('att', 'att', () => rebuildSims(true));
 $('truth').addEventListener('change', e => { state.truth = e.target.checked; updatePanel(); });
 $('clutter').addEventListener('change', e => { state.clutter = e.target.checked; updatePanel(); });
+$('spectrum').addEventListener('change', e => { state.spectrum = e.target.checked; });
+$('priority').addEventListener('change', e => { state.priority = e.target.checked; });
 $('play').addEventListener('click', () => { const sim = sims[state.tab]; if (!state.playing && state.t[state.tab] >= sim.tEnd) state.t[state.tab] = 0; setPlaying(!state.playing); });
 $('scrub').addEventListener('input', e => { state.t[state.tab] = +e.target.value / 1000 * sims[state.tab].tEnd; updatePanel(); });
 $('speed').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.speed = +b.dataset.v; syncControls(); });

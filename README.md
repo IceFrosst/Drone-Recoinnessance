@@ -53,6 +53,14 @@ The deinterleaver scores itself against ground truth and reports, per mission: e
 
 One honest limit of the model: the located fix itself is computed from the target's own high-fidelity bearings (the validated direction-finding path). The deinterleaver decides whether, in the clutter, that target could have been isolated at all, and gates and degrades the result accordingly — it does not rebuild the fix from the imperfect clusters. Across 8 seeds x 3 altitudes x 2 tabs, the true position falls inside the 95% ellipse in about 98% of located fixes. The deinterleaver never suppresses a target the physics could locate; the "lost" ones are those that were unlocatable regardless.
 
+## Mission profile, GNSS denial, and value-based tasking
+
+- **Return to base.** The survey flies a straight line out across the sector and back. Pinpoint flies out, services targets, and returns when it hits a fuel budget ("bingo").
+- **Value-based tasking.** Every candidate is scored by value — control links (operators) highest, then jammers (EW nodes), then radios, weighted by classification confidence and by how rough its current fix is (a valuable but imprecise target is worth refining). The drone diverts to the highest-value candidate, refines it, and moves on. The side panel's HVT-priority overlay shows the belief surface of where high-value targets are; it tightens as fixes converge.
+- **180° arc, not a full circle.** To refine a target the drone flies a single half-circle around it, which cuts the bearing from a wide spread of angles, then breaks off. It does not loiter in circles over a hostile emitter.
+- **GNSS-denial belt.** A broad belt runs along and behind the enemy line (distinct from the local comms-jamming bubbles around EW nodes). Inside it the drone dead-reckons and its own position drifts, which is folded into every fix taken there. This mirrors the real front, where GPS denial is near-continuous over wide areas while communications jamming is localized.
+- **Frequency hopping and retune.** Control links hop across their whole band (not a narrow jitter), which is why the deinterleaver cannot sort them by frequency. Under Frontline RF, a share of operators retune (change hop rate / band) mid-mission, breaking the track so the emitter has to be re-acquired as a new one — the reactive adversary.
+
 ## Still not modelled
 
 Where field data would matter most, and what a real system still has to solve:
