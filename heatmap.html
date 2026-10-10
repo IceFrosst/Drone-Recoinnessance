@@ -1571,9 +1571,17 @@ const OMNI_VERT_BEAM_DEG = 78;      // vertical beamwidth of a stock dipole
 // better confuser rejection than the 2-element bladeRF — but it sweeps slower (fewer bursts) and is
 // blind above 1.77 GHz, so it never hears the 2.4 GHz operators the bladeRF can. Same flights, no arc.
 const ARRAY = { name: 'Coherent array', sub: '5-ch · KrakenSDR-class · ≤1.77 GHz', ceil: 1766, revisitS: 6, sigMult: 1.0, grams: 400, price: '~$900' };
+// Fused payload: bladeRF (wideband, fast, hears 2.4 GHz) + KrakenSDR (clean azimuth ≤1.77 GHz) flown
+// together. Each emitter is handled by the receiver good at it — a cue-and-cue architecture. Full band
+// from the bladeRF; mirror-free, tighter bearings from the Kraken on anything in its band.
+const FUSED = { name: 'bladeRF + array (fused)', sub: 'wideband scan + 5-ch DF ≤1.77 GHz', krakenCeil: 1766, grams: 490, price: '~$1.4k' };
 const rxOf = cfg => cfg.rx === 'array'
-  ? { array: true, ceil: ARRAY.ceil, revisitS: ARRAY.revisitS, sigMult: ARRAY.sigMult, leakTolDeg: 10, leakP: 0.22 }
-  : { array: false, ceil: BRF.ceil, revisitS: (cfg.method === 'rss' ? REVISIT_RSS_S : REVISIT_BRG_S), sigMult: IFM_SIGMA_MULT, leakTolCos: LEAK_U_TOL, leakP: cfg.method === 'rss' ? LEAK_P_RSS : LEAK_P_BRG };
+  ? { array: true, fused: false, ceil: ARRAY.ceil, revisitS: ARRAY.revisitS, sigMult: ARRAY.sigMult, leakTolDeg: 10, leakP: 0.22 }
+  : cfg.rx === 'fused'
+  ? { array: false, fused: true, ceil: BRF.ceil, revisitS: REVISIT_BRG_S, sigMult: IFM_SIGMA_MULT, leakTolCos: LEAK_U_TOL, leakTolDeg: 10, leakP: LEAK_P_BRG }
+  : { array: false, fused: false, ceil: BRF.ceil, revisitS: (cfg.method === 'rss' ? REVISIT_RSS_S : REVISIT_BRG_S), sigMult: IFM_SIGMA_MULT, leakTolCos: LEAK_U_TOL, leakP: cfg.method === 'rss' ? LEAK_P_RSS : LEAK_P_BRG };
+// Does the Kraken half of a fused payload own this emitter's band? (clean azimuth, no mirror, tighter)
+const krakenOwns = (rxt, fMHz) => rxt.fused && fMHz <= FUSED.krakenCeil;
 
 // Clutter the sorter cannot separate from a target (other links with the same band and fingerprint)
 const LEAK_U_TOL = 0.12;            // bearing methods: within this cone-angle difference the two are confusable
@@ -1764,19 +1772,19 @@ function flyFlight(W, cfg, ctx, k, plan) {
     const bs = o.bs, n = bs.length, m = bs.slice().sort((a, b) => a.u - b.u)[n >> 1];
     let rs = 0; for (const b of bs) rs += b.rss;
     const kinds = {}; for (const b of bs) kinds[b.kind] = (kinds[b.kind] || 0) + 1;
-    tr.bins.push({ k: o.k, t: m.t, x: m.x, y: m.y, z: m.z, hx: m.hx, hy: m.hy, u: m.u, az: m.az, sR: m.sR / Math.sqrt(n), sB: m.sB, ns: m.ns, rss: rs / n, n, kinds });
+    tr.bins.push({ k: o.k, t: m.t, x: m.x, y: m.y, z: m.z, hx: m.hx, hy: m.hy, u: m.u, az: m.az, useAz: m.useAz, sR: m.sR / Math.sqrt(n), sB: m.sB, ns: m.ns, rss: rs / n, n, kinds });
   };
   const addBurst = (tr, b) => {
     if (tr.open && (tr.open.k !== k || b.t - tr.open.t0 > BIN_S)) closeBin(tr);
     if (!tr.open) tr.open = { k, t0: b.t, bs: [] };
     tr.open.bs.push(b); tr.lastK = k;
   };
-  const measure = (snr, ex, ey, ez, d) => {
+  const measure = (snr, ex, ey, ez, d, sigMult) => {
     const vx = ex - px, vy = ey - py, vz = ez - altZ, horiz = Math.hypot(vx, vy), vr = Math.hypot(horiz, vz);
     const uT = (vx * d[0] + vy * d[1]) / vr, sT = Math.sqrt(Math.max(0, 1 - uT * uT)), azT = azOf(vx, vy);
     const elev = Math.atan2(-vz, Math.max(horiz, 1)) * R2D, steep = elev > STEEP_ELEV_DEG ? (elev - STEEP_ELEV_DEG) / (90 - STEEP_ELEV_DEG) : 0;
     const q = clamp((SNR_STRONG_DB - snr) / (SNR_STRONG_DB - DETECT_SNR_DB), 0, 1);
-    const sR = (SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * q) * (1 + (STEEP_SIGMA_MAX_MULT - 1) * steep) * D2R * rxt.sigMult;
+    const sR = (SIGMA_STRONG_DEG + (SIGMA_WEAK_DEG - SIGMA_STRONG_DEG) * q) * (1 + (STEEP_SIGMA_MAX_MULT - 1) * steep) * D2R * (sigMult || rxt.sigMult);
     const sB = cfg.realism ? Math.hypot(cfg.attDeg, REAL_RESID_DEG) * D2R : 0;
     const perKm = SIGMA_PER_KM_DEG * D2R * horiz / 1000;
     const noise = R.norm();                                   // one draw, shared by the cone and azimuth forms
@@ -1861,17 +1869,21 @@ function flyFlight(W, cfg, ctx, k, plan) {
         if (q.type === 'ctrl') classifyBurst(R, tr, snr);
         // raw-strength layer (what a one-channel map shows before any fitting): strongest control-link SNR seen per cell
         if (q.type === 'ctrl') { const ci = clamp(Math.round(nX / GC), 0, GCX - 1) + clamp(Math.round(nY / GC), 0, GCY - 1) * GCX; if (snr > naive[ci]) naive[ci] = snr; }
-        // record a burst: cone-angle (two-channel) or azimuth (array), strength (always), believed position
-        const m = (!rxt.array && cfg.method === 'rss') ? { u: 0, az: 0, sR: 0, sB: 0 } : measure(snr, ep.x, ep.y, ep.z, d);
+        // record a burst. Which "DF channel" handles this emitter:
+        //  - pure array: azimuth (no mirror). pure bladeRF: cone (mirror). strength-only: neither.
+        //  - fused: the Kraken owns its band (azimuth, tighter), the bladeRF owns the rest (cone).
+        const kraken = rxt.array || krakenOwns(rxt, q.fMHz);          // this emitter solved on clean azimuth
+        const dfSig = kraken ? ARRAY.sigMult : IFM_SIGMA_MULT;
+        const m = (!rxt.array && !rxt.fused && cfg.method === 'rss') ? { u: 0, az: 0, sR: 0, sB: 0 } : measure(snr, ep.x, ep.y, ep.z, d, dfSig);
         // Recorded strength = raw SNR + reading noise. The processor does NOT know the operator's
         // antenna pattern, so with aimed antennas their beam swing (gH) stays baked in as corruption;
         // with omni antennas gH is a near-constant that the unknown-power fit absorbs.
         const rssDb = snr + (cfg.realism ? R.norm() * RSS_MEAS_DB : 0);
         F.stored++;
-        addBurst(tr, { t, x: nX, y: nY, z: altZ, hx: d[0], hy: d[1], u: m.u, az: m.az, sR: Math.max(m.sR, 0.01), sB: m.sB, ns: navSig, rss: rssDb, kind: (!rxt.array && cfg.method === 'rss') ? (snr >= SNR_STRONG_DB - 3 ? 'strong' : 'weak') : m.kind });
+        addBurst(tr, { t, x: nX, y: nY, z: altZ, hx: d[0], hy: d[1], u: m.u, az: m.az, useAz: kraken, sR: Math.max(m.sR, 0.01), sB: m.sB, ns: navSig, rss: rssDb, kind: (!rxt.array && !rxt.fused && cfg.method === 'rss') ? (snr >= SNR_STRONG_DB - 3 ? 'strong' : 'weak') : m.kind });
         if (tr.nDet === 1 && q.type === 'ctrl') say(t, `Recording ${tr.id}: ${q.src.sig}.`);
         // a confusable other-link burst occasionally filed under this target (clutter the sorter cannot remove)
-        const rssOnly = !rxt.array && cfg.method === 'rss';
+        const rssOnly = !rxt.array && !rxt.fused && cfg.method === 'rss';
         if (cfg.realism && q.type === 'ctrl' && fpPass) {
           for (const cf of confusers) {
             if (!cf.targets.includes(i) || !txOn(W, cf.pe, t, k * 7 + 3)) continue;
@@ -1880,8 +1892,8 @@ function flyFlight(W, cfg, ctx, k, plan) {
             if (cs < cfg.margin || R() > 1 / (1 + Math.exp(-(cs - DETECT_SNR_DB) / DETECT_SLOPE_DB))) continue;
             const cfAz = azOf(cf.pe.x - px, cf.pe.y - py), mu = rssOnly ? 0 : coneU(px, py, altZ, d, cf.pe.x, cf.pe.y, cf.z);
             // confusable = the other link arrives close enough in the measured quantity to be filed under the target
-            const confusable = rssOnly ? true : rxt.array ? Math.abs(angDiff(cfAz, m.az)) < rxt.leakTolDeg : Math.abs(mu - m.u) < rxt.leakTolCos;
-            if (confusable && R() < rxt.leakP) { F.stored++; addBurst(tr, { t, x: nX, y: nY, z: altZ, hx: d[0], hy: d[1], u: mu + R.norm() * (m.sR || 0.05), az: (cfAz + R.norm() * (m.sR || 0.05) * R2D + 360) % 360, sR: Math.max(m.sR, 0.05), sB: m.sB, ns: navSig, rss: cs + (cfg.realism ? R.norm() * RSS_MEAS_DB : 0), kind: 'mix' }); tr.cc.push(cf.pe.idx); }
+            const confusable = rssOnly ? true : kraken ? Math.abs(angDiff(cfAz, m.az)) < rxt.leakTolDeg : Math.abs(mu - m.u) < rxt.leakTolCos;
+            if (confusable && R() < rxt.leakP) { F.stored++; addBurst(tr, { t, x: nX, y: nY, z: altZ, hx: d[0], hy: d[1], u: mu + R.norm() * (m.sR || 0.05), az: (cfAz + R.norm() * (m.sR || 0.05) * R2D + 360) % 360, useAz: kraken, sR: Math.max(m.sR, 0.05), sB: m.sB, ns: navSig, rss: cs + (cfg.realism ? R.norm() * RSS_MEAS_DB : 0), kind: 'mix' }); tr.cc.push(cf.pe.idx); }
           }
         }
       }
@@ -1938,9 +1950,11 @@ function brgCost(bins, cx, cy, cz, coneMode) {
   for (const b of bins) {
     const vx = cx - b.x, vy = cy - b.y, vz = cz - b.z, r = Math.hypot(vx, vy, vz) || 1;
     const sg = Math.hypot(b.sR, b.sB) || 0.02;
+    // each bin knows whether it is an azimuth (array/Kraken) or cone (bladeRF) measurement; fall back to coneMode
+    const useAz = b.useAz != null ? b.useAz : !coneMode;
     let z;
-    if (coneMode) { const uT = (vx * b.hx + vy * b.hy) / r; z = (b.u - uT) / sg; }
-    else { z = (angDiff(b.az, azOf(vx, vy)) * D2R) / sg; }
+    if (useAz) { z = (angDiff(b.az, azOf(vx, vy)) * D2R) / sg; }
+    else { const uT = (vx * b.hx + vy * b.hy) / r; z = (b.u - uT) / sg; }
     c += Math.min(z * z, CAP_Z * CAP_Z) * b.w;
   }
   return c;
@@ -2000,8 +2014,10 @@ function fieldEllipse(prob, nx, ny, x0, y0, res) {
 
 // Solve one emitter from its accumulated bins. Returns a fix or a reason it failed.
 function solveEmitter(W, cfg, tr, bins) {
-  const arr = cfg.rx === 'array';
-  const useBrg = arr || cfg.method !== 'rss', useRss = !arr && cfg.method !== 'brg', coneMode = !arr;
+  const arr = cfg.rx === 'array', fused = cfg.rx === 'fused';
+  // azimuth (no mirror) for a pure array, or for a fused payload on an emitter the Kraken's band covers
+  const azMode = arr || (fused && tr.e && tr.e.fMHz <= FUSED.krakenCeil);
+  const useBrg = arr || fused || cfg.method !== 'rss', useRss = !arr && !fused && cfg.method !== 'brg', coneMode = !azMode;
   const ct = coarseTerrain(W), pr = priorGrid(W);
   const ctFn = (x, y) => ct[clamp(Math.round(y / GC - 0.5), 0, GCY - 1) * GCX + clamp(Math.round(x / GC - 0.5), 0, GCX - 1)];
   const prFn = (x, y) => pr[clamp(Math.round(y / GC - 0.5), 0, GCY - 1) * GCX + clamp(Math.round(x / GC - 0.5), 0, GCX - 1)];
@@ -2035,7 +2051,7 @@ function solveEmitter(W, cfg, tr, bins) {
   // bursts, so they set a hard minimum on the ellipse (same device as the live sim's covariance floor).
   let sr = []; for (const bb of bins) sr.push(Math.hypot(fpkx - bb.x, fpky - bb.y)); sr.sort((x, y) => x - y);
   const medR = sr.length ? sr[sr.length >> 1] : 3000;
-  const sysDeg = useBrg ? Math.hypot(cfg.realism ? ATT_ERR_DEG : 0.3, REAL_RESID_DEG, 0.5) * (arr ? ARRAY.sigMult : IFM_SIGMA_MULT) : 5;
+  const sysDeg = useBrg ? Math.hypot(cfg.realism ? ATT_ERR_DEG : 0.3, REAL_RESID_DEG, 0.5) * (azMode ? ARRAY.sigMult : IFM_SIGMA_MULT) : 5;
   const floorM = medR * sysDeg * D2R + (useBrg ? 0 : 600);    // strength-only: a wide floor, range from power is weak
   const el = { x: fpkx, y: fpky, a: Math.hypot(a0, floorM) * T_CORR, b: Math.hypot(b0, floorM) * T_CORR, ang };
   return { coarse, fine: { prob: fine.prob, x0: fx0, y0: fy0, res, n: FINE_N }, el, mainMass, ghost, nHdg: hset.size, nPos: pset.size, pkx: fpkx, pky: fpky };
@@ -2173,6 +2189,13 @@ window.BATCH = {
    "ghost": "—"
   },
   {
+   "name": "Heat map · bladeRF + array fused · grid",
+   "loc": "36/75",
+   "inside": 81,
+   "err": "427 m",
+   "ghost": 14
+  },
+  {
    "name": "Heat map · coherent array · grid (no arc)",
    "loc": "30/75",
    "inside": 82,
@@ -2233,6 +2256,7 @@ window.BATCH = {
  "prose": [
   "Decomposed with the filter identical on every row, the live-tasking sim's edge splits two ways. Band: a wideband array (hears 2.4 GHz) locates 72 control links with the arc; the same-band KrakenSDR locates 48. Arc: give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops from 48 at 365 m to 30/75 at 667 m. Both cost you real targets — neither is the whole story, and recording-then-mapping on fixed lines is the larger single loss.",
   "Held to the same crossing-grid flights, the array and the bladeRF come out close (30/75 at 667 m vs 33/75 at 601 m). The array has fewer ghosts — five channels give a true azimuth with no mirror — but it is not tighter here, because of its ~3× slower sweep (far fewer bursts per fix) and it is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears. The array's no-mirror edge pays off on single or parallel plans, where crossing headings are missing and the bladeRF cannot resolve its mirror.",
+  "Flying both receivers fused beats either alone: 36/75 located at 427 m, fewer ghosts than either. Each emitter goes to the receiver good at it — the Kraken takes the ≤1.77 GHz control links (clean azimuth, no mirror, tight), the bladeRF takes the 2.4 GHz operators the Kraken cannot hear. It nearly matches a single Kraken flown with the 180° arc, without needing in-air tasking — the cost is SWaP: two receivers (~$1.4k, ~490 g) on a small airframe.",
   "Strength alone is the warning: against aimed antennas it locates 4/75, and the few fixes it makes are wrong. Give the enemy stock omni antennas and the same method locates 20/75 at 78% inside. That gap is the case for the second channel.",
   "Flying more angles beats flying more lines: multi-angle (33/75) and planning each route between flights (39/75) both beat a single pass (12/75), because crossing headings are what resolve the bearing's left/right mirror — and the cheap bladeRF leans on that hardest."
  ]
@@ -2475,7 +2499,7 @@ function updatePanel() {
         <div><dt>Error vs truth</dt><dd>${fmtM(r.err)}</dd><small>known only in simulation</small></div>
         <div><dt>Uncertainty 95%</dt><dd>±${fmtM(r.el.a)}</dd><small>${fmtM(r.el.a)} × ${fmtM(r.el.b)}</small></div>
         <div><dt>Bursts used</dt><dd>${r.nB}</dd><small>pooled across flights</small></div>
-        <div><dt>Method</dt><dd style="font-size:15px">${METHODS[state.method].name}</dd><small>${state.method === 'both' ? 'direction + strength' : state.method === 'brg' ? 'direction only' : 'strength only'}</small></div>
+        <div><dt>Receiver</dt><dd style="font-size:15px">${state.rx === 'array' ? 'Array' : state.rx === 'fused' ? 'Fused' : 'bladeRF'}</dd><small>${state.rx === 'array' ? 'azimuth, no mirror' : state.rx === 'fused' ? 'bladeRF + array' : state.method === 'both' ? 'direction + strength' : state.method === 'brg' ? 'direction only' : 'strength only'}</small></div>
       </dl>`;
   }
 
@@ -2595,12 +2619,12 @@ function segButtons(id, opts, cur, onPick) {
 }
 function syncControls() {
   $('seed').value = state.seed;
-  segButtons('rx', [{ v: 'bladerf', l: 'bladeRF · 2-ch' }, { v: 'array', l: 'Coherent array · 5-ch' }], state.rx, v => { state.rx = v; rebuild(true); afterChange(); });
+  segButtons('rx', [{ v: 'bladerf', l: 'bladeRF · 2-ch' }, { v: 'array', l: 'Array · 5-ch' }, { v: 'fused', l: 'Both (fused)' }], state.rx, v => { state.rx = v; rebuild(true); afterChange(); });
   segButtons('method', [{ v: 'brg', l: 'Bearings' }, { v: 'rss', l: 'Strength' }, { v: 'both', l: 'Combined' }], state.method, v => { state.method = v; rebuild(true); afterChange(); });
-  const arr = state.rx === 'array';
-  $('rxVal').textContent = arr ? ARRAY.sub : `${BRF.ibw} · ≤6 GHz · 2-ch`;
-  $('rxNote').textContent = arr ? 'Five coherent channels give a true azimuth — no left/right mirror, so one pass can locate. But it sweeps slower (fewer bursts) and is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears.' : 'Two channels off one clock: a cone angle with a left/right mirror that crossing headings resolve. Wideband and fast — hears 2.4/5.8 GHz.';
-  $('methodRow').hidden = arr;
+  const arr = state.rx === 'array', fused = state.rx === 'fused';
+  $('rxVal').textContent = arr ? ARRAY.sub : fused ? FUSED.sub : `${BRF.ibw} · ≤6 GHz · 2-ch`;
+  $('rxNote').textContent = arr ? 'Five coherent channels give a true azimuth — no left/right mirror, so one pass can locate. But it sweeps slower (fewer bursts) and is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears.' : fused ? `Both receivers flown together (~${FUSED.price}, ${FUSED.grams} g). Each emitter goes to the receiver good at it: the Kraken takes ≤1.77 GHz operators (clean azimuth, no mirror, tight); the bladeRF takes the rest, including 2.4 GHz. Full band and mirror-free where it counts — at the SWaP cost of two receivers.` : 'Two channels off one clock: a cone angle with a left/right mirror that crossing headings resolve. Wideband and fast — hears 2.4/5.8 GHz.';
+  $('methodRow').hidden = arr || fused;
   segButtons('plan', PLANS.map(p => ({ v: p.id, l: p.name })), state.plan, v => { state.plan = v; state.nFlights = PLANS.find(p => p.id === v).flights.length; rebuild(true); afterChange(); });
   segButtons('planning', [{ v: 'fixed', l: 'Fixed upfront' }, { v: 'adaptive', l: 'Plan between flights' }], state.planning, v => { state.planning = v; rebuild(true); afterChange(); });
   segButtons('alt', ALT_CHOICES.map(a => ({ v: a, l: (a / 1000) + ' km' })), state.altM, v => { state.altM = +v; rebuild(true); afterChange(); });

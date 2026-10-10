@@ -123,7 +123,13 @@ The module is a bladeRF 2.0 micro xA4 (70 MHz–6 GHz, 56 MHz instantaneous band
 - **Strength** — fit range to the 1/rⁿ falloff with the operator's transmit power unknown. This works against omni antennas and **fails against aimed ones**, because the signal peaks where the operator points their patch/yagi, not where they sit.
 - **Combined** — bearings carry the fix, strength trims the ambiguity.
 
-A **Receiver** toggle swaps the bladeRF for a 5-channel **coherent array** (KrakenSDR-class) that flies the identical predefined flights, so the choice isolates the receiver. The array gives a true azimuth — no left/right mirror, tighter bearings, fewer ghosts — but it sweeps slower (fewer bursts) and is blind above 1.77 GHz, so it never hears the 2.4 GHz operators the bladeRF catches. Held to the same flights the two come out close (see the batch table): the array is tighter per fix, the bladeRF finds as many or more because it hears the whole band. The big gap in the batch table is the **live-tasking sim**, and that gap is the 180° arc and in-air tasking, not the receiver — give the same array these predefined flights with no arc and it falls to the array row.
+A **Receiver** toggle offers three options, all flying the identical predefined flights so the choice isolates the receiver:
+
+- **bladeRF (2-ch)** — wideband, fast, hears 2.4 GHz, but a cone angle with a left/right mirror.
+- **Coherent array (5-ch, KrakenSDR-class)** — true azimuth, no mirror, tighter bearings and fewer ghosts, but slower sweep and blind above 1.77 GHz (misses the 2.4 GHz operators). Held to the same flights the two come out close: the array is tighter per fix, the bladeRF finds as many or more because it hears the whole band.
+- **Both, fused** — fly the bladeRF and the Kraken together (sensor fusion, a cue-and-cue payload). Each emitter goes to the receiver good at it: the Kraken takes the ≤1.77 GHz control links (clean azimuth, no mirror, tight), the bladeRF takes the 2.4 GHz operators the Kraken can't hear. This **beats either alone** — more located, tighter, fewer ghosts (see the batch table) — and nearly matches a single Kraken flown *with* the 180° arc, without needing in-air tasking. The cost is SWaP: two receivers (~$1.4k, ~490 g) on a small airframe. (Pairing the bladeRF with a HackRF instead adds little: the HackRF has no direction finding and the bladeRF already covers the band.)
+
+The big gap in the batch table is the **live-tasking sim**, and that gap is the 180° arc and in-air tasking, not the receiver — give the same array these predefined flights with no arc and it falls to the array row.
 
 ## Record now, map later
 
@@ -149,6 +155,7 @@ All numbers are modelled, not field results. Across 8 maps × 3 altitudes, Front
 |---|---|---|---|---|
 | Live-tasking sim · wideband array + 180° arc | 72 fixes | 100% | 244 m | — |
 | Live-tasking sim · KrakenSDR + 180° arc | 48 fixes | 94% | 365 m | — |
+| Heat map · bladeRF + array fused · grid | 36/75 | 81% | 427 m | 14 |
 | Heat map · coherent array · grid (no arc) | 30/75 | 82% | 667 m | 17 |
 | Heat map · bearings · grid | 33/75 | 88% | 601 m | 16 |
 | Heat map · combined · grid | 31/75 | 81% | 735 m | 19 |
@@ -162,6 +169,7 @@ Reading it. Every row runs the **same 5-stage filter** and counts **control link
 
 - **The live-tasking sim's edge splits two ways, and neither is the whole story.** *Band:* a wideband array (hears 2.4 GHz) locates the most; the same-band KrakenSDR locates fewer because it misses the 2.4 GHz operators. *Arc:* give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops again. Record-then-map on fixed lines is the larger single loss, but the band matters too — my first write-up wrongly pinned it all on the arc (and inflated the old number by counting jammers and radios).
 - **Array vs bladeRF, held to the same flights, is close.** On the crossing grid the array is not tighter and locates no more, because it sweeps ~3× slower (fewer bursts per fix) and is blind above 1.77 GHz. Its no-mirror edge pays off on single/parallel plans, where the bladeRF cannot resolve its mirror. So the receiver choice depends on the flight plan.
+- **Flying both, fused, beats either alone** — more located, tighter, fewer ghosts — because each emitter is handled by the receiver suited to it (Kraken on the low band, bladeRF on 2.4 GHz). It buys back much of what the arc bought, for a SWaP cost rather than live in-air compute. Pairing with a HackRF instead would add little (no direction finding, redundant band).
 - **Strength alone is the warning.** Against aimed antennas it barely locates anything and the few fixes are wrong; give the enemy stock omni antennas and the same method works. That gap is the entire case for the second channel.
 - **Flying more angles beats flying more lines.** Multi-angle and between-flight planning both beat parallel lines and a single pass, because crossing headings resolve the bearing mirror. A minority of fixes stay **confidently wrong** — mostly single-heading plans whose mirror never got resolved — a real failure mode, shown on purpose, as in the live sim.
 
