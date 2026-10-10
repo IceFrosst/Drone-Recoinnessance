@@ -147,7 +147,8 @@ All numbers are modelled, not field results. Across 8 maps × 3 altitudes, Front
 
 | Setup | Located | Inside 95% | Median error | Ghosts |
 |---|---|---|---|---|
-| Live-tasking sim (coherent array + 180° arc) | 101 fixes | 100% | 183 m | — |
+| Live-tasking sim · wideband array + 180° arc | 72 fixes | 100% | 244 m | — |
+| Live-tasking sim · KrakenSDR + 180° arc | 48 fixes | 94% | 365 m | — |
 | Heat map · coherent array · grid (no arc) | 30/75 | 82% | 667 m | 17 |
 | Heat map · bearings · grid | 33/75 | 88% | 601 m | 16 |
 | Heat map · combined · grid | 31/75 | 81% | 735 m | 19 |
@@ -157,12 +158,12 @@ All numbers are modelled, not field results. Across 8 maps × 3 altitudes, Front
 | Heat map · strength only · omni enemy | 20/75 | 78% | 1865 m | 23 |
 | Heat map · combined · single pass | 12/75 | 100% | 332 m | 28 |
 
-Reading it:
+Reading it. Every row runs the **same 5-stage filter** and counts **control links only**, so the differences are real, not bookkeeping:
 
-- **The arc, not the receiver, is the live-tasking sim's real advantage.** Give the same coherent array the heat map's predefined flights with no 180° arc and no in-air tasking (the "coherent array · grid" row) and it falls from 101 fixes at 183 m to 30/75 at 667 m. Flying straight lines and processing later is what costs you — far more than which receiver you fly.
-- **Array vs bladeRF, held to the same flights, is close.** On the crossing grid the array is not tighter and locates no more, because it sweeps ~3× slower (fewer bursts per fix) and is blind above 1.77 GHz, missing the 2.4 GHz operators. Its no-mirror edge pays off on single/parallel plans, where the bladeRF cannot resolve its mirror. So the receiver choice depends on the flight plan, not the other way round.
+- **The live-tasking sim's edge splits two ways, and neither is the whole story.** *Band:* a wideband array (hears 2.4 GHz) locates the most; the same-band KrakenSDR locates fewer because it misses the 2.4 GHz operators. *Arc:* give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops again. Record-then-map on fixed lines is the larger single loss, but the band matters too — my first write-up wrongly pinned it all on the arc (and inflated the old number by counting jammers and radios).
+- **Array vs bladeRF, held to the same flights, is close.** On the crossing grid the array is not tighter and locates no more, because it sweeps ~3× slower (fewer bursts per fix) and is blind above 1.77 GHz. Its no-mirror edge pays off on single/parallel plans, where the bladeRF cannot resolve its mirror. So the receiver choice depends on the flight plan.
 - **Strength alone is the warning.** Against aimed antennas it barely locates anything and the few fixes are wrong; give the enemy stock omni antennas and the same method works. That gap is the entire case for the second channel.
-- **Flying more angles beats flying more lines.** Multi-angle and between-flight planning both beat parallel lines and a single pass, because crossing headings are what resolve the bearing mirror. A minority of fixes stay **confidently wrong** — mostly single-heading plans whose mirror never got resolved — a real failure mode, shown on purpose, as in the live sim.
+- **Flying more angles beats flying more lines.** Multi-angle and between-flight planning both beat parallel lines and a single pass, because crossing headings resolve the bearing mirror. A minority of fixes stay **confidently wrong** — mostly single-heading plans whose mirror never got resolved — a real failure mode, shown on purpose, as in the live sim.
 
 ## Honest limits specific to this page
 

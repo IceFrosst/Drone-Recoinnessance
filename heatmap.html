@@ -406,7 +406,7 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
     <div id="railCompare" hidden>
       <section>
         <h2>Same flights, two receivers</h2>
-        <p class="cmpnote" style="margin:0 0 4px">To compare fairly, both receivers fly the <b>same predefined routes</b>, record, and build the heat map after landing — <b>no 180° arc, no in-air tasking</b>, multiple flights per map. The only difference is the receiver, so the gap below is what the receiver alone buys.</p>
+        <p class="cmpnote" style="margin:0 0 4px">To compare fairly, both receivers fly the <b>same predefined routes</b>, record, and build the heat map after landing — <b>no 180° arc, no in-air tasking</b>, multiple flights per map. Both also run the <b>same 5-stage filter</b> (band · self-noise · noise-floor · hop fingerprint · convergence) the live-tasking sim uses — the clutter you see getting through is only the other control links that share a target's band and fingerprint, which no filter removes. The only difference is the receiver, so the gap below is what the receiver alone buys.</p>
         <div class="diffcards">
           <div class="diffcard new">
             <h4>Coherent array (5-ch)</h4>
@@ -2159,10 +2159,17 @@ function runCampaign(W, cfg) {
 window.BATCH = {
  "rows": [
   {
-   "name": "Live-tasking sim (coherent array + 180° arc)",
-   "loc": "101 fixes",
+   "name": "Live-tasking sim · wideband array + 180° arc",
+   "loc": "72 fixes",
    "inside": 100,
-   "err": "183 m",
+   "err": "244 m",
+   "ghost": "—"
+  },
+  {
+   "name": "Live-tasking sim · KrakenSDR + 180° arc",
+   "loc": "48 fixes",
+   "inside": 94,
+   "err": "365 m",
    "ghost": "—"
   },
   {
@@ -2222,10 +2229,10 @@ window.BATCH = {
    "ghost": 28
   }
  ],
- "note": "8 maps × 3 altitudes, Frontline RF on, teams relocating. \"Located\" counts control stations pinned to within ±4 km across the campaign; the live-tasking sim's figure is its per-mission located fixes. Inside-95% is over all genuine fixes (not only the tight ones), so the located bar does not flatter it. Error is vs. the simulated truth. All numbers are modelled, not field results.",
+ "note": "8 maps × 3 altitudes, Frontline RF on, teams relocating. Every row runs the same 5-stage filter (band · self-noise · floor · hop fingerprint · convergence) and counts CONTROL LINKS only. \"Located\" means pinned to within ±4 km across the campaign; the live-tasking rows are per-mission fixes. Inside-95% is over all genuine fixes, so the located bar does not flatter it. All numbers are modelled, not field results.",
  "prose": [
-  "The arc, not the receiver, is the live-tasking sim's real advantage. Give the same coherent array the heat map's predefined flights with no 180° arc and no in-air tasking, and it falls from 101 fixes at 183 m to 30/75 at 667 m. Flying straight lines and processing later is what costs you, far more than the choice of receiver.",
-  "Held to the same crossing-grid flights, the array and the bladeRF come out close (30/75 at 667 m vs 33/75 at 601 m). The array has fewer ghosts — five channels give a true azimuth with no mirror — but it is not tighter here and locates no more, because it sweeps ~3× slower (far fewer bursts per fix) and is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears. The array’s no-mirror edge pays off on single or parallel plans, where crossing headings are missing and the bladeRF cannot resolve its mirror.",
+  "Decomposed with the filter identical on every row, the live-tasking sim's edge splits two ways. Band: a wideband array (hears 2.4 GHz) locates 72 control links with the arc; the same-band KrakenSDR locates 48. Arc: give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops from 48 at 365 m to 30/75 at 667 m. Both cost you real targets — neither is the whole story, and recording-then-mapping on fixed lines is the larger single loss.",
+  "Held to the same crossing-grid flights, the array and the bladeRF come out close (30/75 at 667 m vs 33/75 at 601 m). The array has fewer ghosts — five channels give a true azimuth with no mirror — but it is not tighter here, because of its ~3× slower sweep (far fewer bursts per fix) and it is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears. The array's no-mirror edge pays off on single or parallel plans, where crossing headings are missing and the bladeRF cannot resolve its mirror.",
   "Strength alone is the warning: against aimed antennas it locates 4/75, and the few fixes it makes are wrong. Give the enemy stock omni antennas and the same method locates 20/75 at 78% inside. That gap is the case for the second channel.",
   "Flying more angles beats flying more lines: multi-angle (33/75) and planning each route between flights (39/75) both beat a single pass (12/75), because crossing headings are what resolve the bearing's left/right mirror — and the cheap bladeRF leans on that hardest."
  ]
@@ -2534,15 +2541,16 @@ function updateCompare() {
   renderDiffLists();
   const key = [state.seed, state.plan, state.planning, state.nFlights, state.altM, state.realism, state.moveP, state.density, state.omni, state.method].join('|');
   if (key !== cmpKey) { cmpA = runCampaign(world, cmpConfig('array')); cmpB = runCampaign(world, cmpConfig('bladerf')); cmpKey = key; }
-  if (!cmpOldSim) { const ocfg = { refl: true, realism: state.realism, attDeg: ATT_ERR_DEG, noise: 2, beam: BEAM_WIDTH_DEG, density: state.density, margin: 4, convTolM: 5000, persistWin: 3, rx: 2, alt: 1 }; cmpOldSim = simulate(world, ocfg, 1); }
+  // live-tasking reference on the SAME receiver as the new array (KrakenSDR tier, rx 0), so the arc is isolated
+  if (!cmpOldSim) { const ocfg = { refl: true, realism: state.realism, attDeg: ATT_ERR_DEG, noise: 2, beam: BEAM_WIDTH_DEG, density: state.density, margin: 4, convTolM: 5000, persistWin: 3, rx: 0, alt: 1 }; cmpOldSim = simulate(world, ocfg, 1); }
   drawMini($('cmpOld'), cmpA, COL.teal); drawMini($('cmpNew'), cmpB, COL.amber);
   const A = cmpSummary(cmpA), B = cmpSummary(cmpB);
   $('cmpOldP').textContent = `${A.loc} of ${A.targets} control stations located${A.ghost ? `, ${A.ghost} ghost` : ''}${isFinite(A.med) ? ` · median ${fmtM(A.med)}` : ''}. No mirror, tighter bearings — but blind above 1.77 GHz and slower to sweep.`;
   $('cmpNewP').textContent = `${B.loc} of ${B.targets} control stations located${B.ghost ? `, ${B.ghost} ghost` : ''}${isFinite(B.med) ? ` · median ${fmtM(B.med)}` : ''}. Hears 2.4/5.8 GHz and sweeps faster, but a 2-element mirror that crossing headings must resolve.`;
-  // live-tasking sim reference (the actual other artifact: arc + in-air tasking)
+  // live-tasking sim reference on the SAME receiver (KrakenSDR) so the only difference is the 180° arc
   const oldLoc = cmpOldSim.tracks.filter(tr => { const sn = tr.snaps[tr.snaps.length - 1]; return isLocated(tr, sn, cmpOldSim.pipe.params) && tr.e.type === 'ctrl'; });
   const oe = oldLoc.map(tr => { const sn = tr.snaps[tr.snaps.length - 1], tp = emPos(world, tr.e, sn.t); return Math.hypot(sn.fix.x - tp.x, sn.fix.y - tp.y); }).sort((a, b) => a - b);
-  $('cmpRef').innerHTML = `<b>Reference — the live-tasking sim</b> (coherent array + 180° arc + in-air tasking, one mission) locates ${oldLoc.length} control links here at a ${oe.length ? fmtM(oe[oe.length >> 1]) : '–'} median. That is the arc's doing, not the receiver's: give the same array these predefined flights with no arc (left pane) and it drops to ${A.loc}. The arc is what you give up by recording and mapping later.`;
+  $('cmpRef').innerHTML = `<b>Reference — the live-tasking sim on the same receiver</b> (KrakenSDR-class array + 180° arc + in-air tasking, one mission) locates ${oldLoc.length} control links here at a ${oe.length ? fmtM(oe[oe.length >> 1]) : '–'} median. Same receiver, same 5-stage filter as the left pane — the only difference is the arc. Dropping it (left pane: ${A.loc} located) is the cost of recording and mapping later. A wideband array would add back the 2.4 GHz operators both panes miss, but that is the band, not the arc.`;
   renderBatch(); renderCmpProse();
   syncControls();
 }
