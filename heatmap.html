@@ -234,6 +234,22 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
 .app.compare #railCompare { max-width: 1100px; margin: 0 auto; width: 100%; }
 .seg.three button { flex: 1; }
 .proc-badge { position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%); background: rgba(8,17,30,.9); border: 1px solid var(--amber); color: var(--amber); padding: 10px 18px; border-radius: 8px; font: 600 14px var(--font-label); letter-spacing: .06em; text-transform: uppercase; pointer-events: none; }
+
+/* Final-result panel: per-station probabilities at campaign end */
+#resultsSection h2 small { color: var(--teal); }
+.results { display: flex; flex-direction: column; gap: 7px; }
+.results .rsum { font: 500 13px var(--font-body); color: var(--ink-dim); margin-bottom: 2px; }
+.results .rsum b { color: var(--ink); font-weight: 600; }
+.rrow { display: grid; grid-template-columns: 30px 1fr auto; gap: 4px 9px; align-items: center; border: 1px solid var(--rule); border-radius: 6px; padding: 7px 9px; background: var(--panel-2); }
+.rrow .chip { grid-row: span 3; align-self: start; }
+.rrow .rname { font: 600 13px var(--font-label); color: var(--ink); }
+.rrow .rprob { font: 500 12.5px var(--font-data); text-align: right; white-space: nowrap; }
+.rrow .rbar { grid-column: 2 / -1; height: 6px; border-radius: 3px; background: var(--ground); overflow: hidden; border: 1px solid var(--rule); }
+.rrow .rbar i { display: block; height: 100%; background: linear-gradient(90deg, rgba(243,180,67,.6), var(--amber)); }
+.rrow .rmeta { grid-column: 2 / -1; font: 400 11.5px var(--font-data); color: var(--ink-dim); }
+.rrow.loc { border-color: rgba(243,180,67,.45); }
+.rrow.miss { opacity: .72; }
+.rrow .rprob.good { color: var(--teal); } .rrow .rprob.warn { color: var(--amber); }
 </style>
 </head>
 <body>
@@ -269,10 +285,11 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
     </div>
     <div class="transport">
       <button class="btn play" id="play" type="button"></button>
+      <button class="btn" id="toEnd" type="button" title="Jump to the final heat map">End &#8677;</button>
       <div class="clock"><span id="tnow">Flight 1</span><span class="dim"> / <span id="tend"></span></span></div>
       <input id="scrub" type="range" min="0" max="1000" step="1" value="0" aria-label="Campaign timeline">
       <div class="seg" id="speed" role="group" aria-label="Playback speed">
-        <button type="button" data-v="40">&times;40</button><button type="button" data-v="80">&times;80</button><button type="button" data-v="160">&times;160</button><button type="button" data-v="320">&times;320</button>
+        <button type="button" data-v="40">&times;40</button><button type="button" data-v="80">&times;80</button><button type="button" data-v="160">&times;160</button><button type="button" data-v="320">&times;320</button><button type="button" data-v="640">&times;640</button><button type="button" data-v="1280">&times;1280</button>
       </div>
     </div>
   </main>
@@ -280,6 +297,10 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
   <aside class="rail" id="rail">
     <!-- CAMPAIGN TAB -->
     <div id="railCampaign">
+      <section id="resultsSection" hidden>
+        <h2>Final result <small id="resultsNote"></small></h2>
+        <div id="resultsBox" class="results"></div>
+      </section>
       <section>
         <h2>Best fix <small id="bfNote"></small></h2>
         <div class="fixcard" id="bestfix"></div>
@@ -313,6 +334,11 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
             <span class="lbl">Flight plan <span class="val" id="planVal"></span></span>
             <div class="seg wide" id="plan" role="group" aria-label="Flight plan"></div>
             <span class="note" id="planNote"></span>
+          </div>
+          <div class="row">
+            <label for="nFlights">Number of flights <output id="nFlightsVal" for="nFlights"></output></label>
+            <input id="nFlights" type="range" min="1" max="10" step="1">
+            <span class="note" id="nFlightsNote"></span>
           </div>
           <div class="row">
             <span class="lbl">Planning <span class="val" id="planningVal"></span></span>
@@ -349,6 +375,7 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
           <div class="toggles">
             <label><input type="checkbox" id="realism"> Frontline RF</label>
             <label><input type="checkbox" id="truth"> Ground truth</label>
+            <label><input type="checkbox" id="showSpectrum"> Background spectrum</label>
             <label><input type="checkbox" id="showPaths"> Flight paths</label>
             <label><input type="checkbox" id="showCover"> Coverage</label>
             <label><input type="checkbox" id="showNaive"> Raw strength</label>
@@ -2044,16 +2071,22 @@ function beliefGrid(W, cfg, ctx, uptoFlight) {
   return { grid, perEmit };
 }
 
+// Extra routes used when the flight-count slider asks for more flights than the plan defines.
+// A varied sequence of headings and depths, so added passes keep resolving the bearing mirror.
+const EXTRA_FLIGHTS = [['ns', 1], ['diag', 0], ['ew', 0], ['diag', 1], ['ns', 2], ['ew', 2], ['box', 1], ['ns', 0], ['ew', 1], ['box', 0]];
+
 /* ---------- run the whole campaign ---------- */
 function runCampaign(W, cfg) {
   const planDef = PLANS.find(p => p.id === cfg.plan) || PLANS[1];
-  const nF = planDef.flights.length;
+  const baseN = planDef.flights.length;
+  const nF = Math.max(1, Math.min(10, cfg.nFlights || baseN));   // slider override, clamped
   const ctx = { epochs: makeEpochs(W, cfg, nF), tracks: new Map() };
   const flights = [], used = [], perFlight = [];
   for (let k = 0; k < nF; k++) {
     let plan;
     if (cfg.planning === 'adaptive' && k > 0) plan = pickNextPlan(W, ctx, used);
-    else { const [pat, lane] = planDef.flights[k]; plan = { pat, lane }; }
+    else if (k < baseN) { const [pat, lane] = planDef.flights[k]; plan = { pat, lane }; }
+    else { const [pat, lane] = EXTRA_FLIGHTS[(k - baseN) % EXTRA_FLIGHTS.length]; plan = { pat, lane }; }
     plan.alt = plan.alt || cfg.altM || ALT_CHOICES[Math.min(k, 2)];
     used.push({ pat: plan.pat, lane: plan.lane });
     const fl = flyFlight(W, cfg, ctx, k, plan);
@@ -2170,17 +2203,17 @@ const PROC_S = 150, GAP_S = 320;          // replay seconds spent "processing" a
 const HEAT_GAMMA = 0.48;
 
 const state = {
-  seed: 'ALPHA1', tab: 0, method: 'both', plan: 'grid', planning: 'fixed', altM: 2000,
+  seed: 'ALPHA1', tab: 0, method: 'both', plan: 'grid', planning: 'fixed', altM: 2000, nFlights: 4,
   memory: 'all', omni: false, moveP: 35, density: 150, realism: true, truth: true,
-  showPaths: true, showCover: false, showNaive: false, showGhost: true,
-  playing: !REDUCED, speed: 80, t: 0, hover: -1, pin: -1, follow: false,
+  showPaths: true, showCover: false, showNaive: false, showGhost: true, showSpectrum: true,
+  playing: !REDUCED, speed: 160, t: 0, hover: -1, pin: -1, follow: false,
 };
 let world = null, camp = null, timeline = null, cmpOldSim = null;
 
 /* ---------- build config + run ---------- */
 function cfg() {
   return { refl: true, realism: state.realism, attDeg: ATT_ERR_DEG, noise: 2, beam: BEAM_WIDTH_DEG,
-    density: state.density, margin: 4, convTolM: 4000, moveP: state.moveP / 100,
+    density: state.density, margin: 4, convTolM: 4000, moveP: state.moveP / 100, nFlights: state.nFlights,
     method: state.method, plan: state.plan, planning: state.planning, memory: state.memory, omni: state.omni, altM: state.altM };
 }
 function buildTimeline() {
@@ -2307,6 +2340,16 @@ function draw(now) {
     ctx.strokeStyle = active ? rgba(COL.teal, 0.8) : rgba(COL.slate, 0.3); ctx.lineWidth = active ? 1.8 : 1.1; ctx.stroke();
   });
 
+  // background spectrum: the dense clutter of other emitters the sorter must cut through
+  if (state.showSpectrum && world.population && s > 0.006) {
+    const nd = Math.min(state.density, world.population.length);
+    for (let i = 0; i < nd; i++) {
+      const pe = world.population[i];
+      ctx.fillStyle = pe.k === 'link' ? rgba(COL.amber, 0.5) : pe.k === 'wifi' ? rgba(COL.purple, 0.42) : rgba(COL.slate, 0.4);
+      ctx.fillRect(X(pe.x) - 1, Y(pe.y) - 1, 2, 2);
+    }
+  }
+
   // ground truth emitters
   if (state.truth) {
     const E = camp.ctx.epochs[Math.max(0, seg.k)];
@@ -2340,7 +2383,7 @@ function draw(now) {
     ctx.setLineDash([5, 4]); ctx.strokeStyle = rgba(COL.amber, 0.95); ctx.lineWidth = isHov ? 2.2 : 1.5; ctx.stroke(); ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(ex - 5, ey - 5); ctx.lineTo(ex + 5, ey + 5); ctx.moveTo(ex + 5, ey - 5); ctx.lineTo(ex - 5, ey + 5);
     ctx.strokeStyle = rgba(COL.ground, 0.9); ctx.lineWidth = 4; ctx.stroke(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.8; ctx.stroke();
-    halo(`${r.id} ±${fmtM(el.a)}`, ex + 9, ey + 10, '#fff', FONT_DATA);
+    halo(`${r.id} ${pct(r.pv.conf)} · ±${fmtM(el.a)}`, ex + 9, ey + 10, '#fff', FONT_DATA);
     ctx.globalAlpha = 1;
   }
 
@@ -2423,6 +2466,29 @@ function updatePanel() {
     const meta = [`${r.nHdg} hdg`, `${r.nB} brst`, r.why, state.truth && r.located ? `err ${fmtM(r.err)}` : null, r.moved > 0 ? `moved ${fmtM(r.moved)}` : null, r.retuned ? 'retuned' : null].filter(Boolean).join(' · ');
     return `<button class="contact ${state.pin === r.idx ? 'hl' : ''}" data-i="${r.idx}"><span class="chip ctrl">${r.id}</span><span class="cls">Control link <em>${pct(r.pv.conf)}</em></span><span class="q ${qc}">${q}</span><span class="meta">${meta}</span></button>`;
   }).join('') || '<p class="empty">No control links tracked yet.</p>';
+
+  // final-result panel: the heat map's conclusion, with per-station probabilities
+  const complete = state.t >= timeline.total - 1 && hi >= 0;
+  const rs = $('resultsSection');
+  if (complete) {
+    rs.hidden = false;
+    const locs = report.filter(r => r.located).sort((a, b) => b.pv.conf - a.pv.conf || a.el.a - b.el.a);
+    const cands = report.filter(r => !r.located && r.reportable).sort((a, b) => a.el.a - b.el.a);
+    const ghostN = report.filter(r => r.ghost && !r.located).length;
+    const es = locs.map(r => r.err).filter(isFinite).sort((a, b) => a - b), med = es.length ? es[es.length >> 1] : NaN;
+    $('resultsNote').textContent = `after ${camp.nF} flights`;
+    const rrow = (r, isLoc) => {
+      const conf = Math.round(r.pv.conf * 100), cc = r.el.a < 1500 ? 'good' : r.el.a < 3000 ? 'warn' : '';
+      const meta = isLoc ? `±${fmtM(r.el.a)} (95%)${state.truth && isFinite(r.err) ? ` · ${fmtM(r.err)} from truth` : ''}` : (r.why || 'fix not tight enough');
+      return `<div class="rrow ${isLoc ? 'loc' : 'miss'}"><span class="chip ctrl">${r.id}</span><span class="rname">${isLoc ? 'Control station' : 'Candidate'}</span><span class="rprob ${isLoc ? cc : ''}">${conf}%</span><span class="rbar"><i style="width:${conf}%"></i></span><span class="rmeta">${meta}</span></div>`;
+    };
+    let html = `<div class="rsum"><b>${locs.length}</b> of <b>${camp.summary.targets}</b> control stations located · ${ghostN} ghost${ghostN === 1 ? '' : 's'}${state.truth && es.length ? ` · median error ${fmtM(med)}` : ''}</div>`;
+    html += locs.map(r => rrow(r, true)).join('') + cands.map(r => rrow(r, false)).join('');
+    if (!locs.length && !cands.length) html += `<p class="empty">No control station reached a confident, unambiguous fix. Add flights, cross more headings, or use the combined method.</p>`;
+    html += `<p class="cap" style="margin-top:4px">Probability = chance the signal is a drone control link (from its fingerprint). ±95% is the location box; a ghost is an unresolved left/right mirror.</p>`;
+    $('resultsBox').innerHTML = html;
+  } else rs.hidden = true;
+
   syncControls();
 }
 
@@ -2482,7 +2548,7 @@ function segButtons(id, opts, cur, onPick) {
 function syncControls() {
   $('seed').value = state.seed;
   segButtons('method', [{ v: 'brg', l: 'Bearings' }, { v: 'rss', l: 'Strength' }, { v: 'both', l: 'Combined' }], state.method, v => { state.method = v; rebuild(true); afterChange(); });
-  segButtons('plan', PLANS.map(p => ({ v: p.id, l: p.name })), state.plan, v => { state.plan = v; rebuild(true); afterChange(); });
+  segButtons('plan', PLANS.map(p => ({ v: p.id, l: p.name })), state.plan, v => { state.plan = v; state.nFlights = PLANS.find(p => p.id === v).flights.length; rebuild(true); afterChange(); });
   segButtons('planning', [{ v: 'fixed', l: 'Fixed upfront' }, { v: 'adaptive', l: 'Plan between flights' }], state.planning, v => { state.planning = v; rebuild(true); afterChange(); });
   segButtons('alt', ALT_CHOICES.map(a => ({ v: a, l: (a / 1000) + ' km' })), state.altM, v => { state.altM = +v; rebuild(true); afterChange(); });
   segButtons('mem', [{ v: 'all', l: 'Keep all' }, { v: 'fade', l: 'Fade' }, { v: 'last', l: 'Last only' }], state.memory, v => { state.memory = v; rebuild(true); afterChange(); });
@@ -2491,6 +2557,9 @@ function syncControls() {
   $('methodNote').textContent = state.method === 'rss' ? 'One channel: a strength map. No bearings. Fails against aimed antennas — see the Combined and Bearings options.' : state.method === 'brg' ? 'Two channels, cone-angle only. One pass leaves a left/right mirror; crossing headings break it.' : 'Two channels: bearings carry the fix, strength trims the ambiguity.';
   $('planVal').textContent = PLANS.find(p => p.id === state.plan).name;
   $('planNote').textContent = PATTERNS[camp ? camp.flights[0].plan.pat : 'ew'].note;
+  const baseN = PLANS.find(p => p.id === state.plan).flights.length;
+  $('nFlights').value = state.nFlights; $('nFlightsVal').textContent = state.nFlights + (state.nFlights === 1 ? ' flight' : ' flights');
+  $('nFlightsNote').textContent = state.nFlights > baseN ? `${state.nFlights - baseN} extra pass${state.nFlights - baseN === 1 ? '' : 'es'} added on fresh headings. More flights = more recordings = sharper, slower.` : state.planning === 'adaptive' ? 'Each flight after the first aims at the current uncertainty.' : 'More flights add recordings; crossing headings resolve the mirror.';
   $('planningVal').textContent = state.planning === 'fixed' ? 'all routes set before flight 1' : 'each route chosen at base';
   $('planningNote').textContent = state.planning === 'fixed' ? 'Every route is fixed before the first takeoff.' : 'Flight 2 onward aims at whatever the heat map is still unsure about.';
   $('altVal').textContent = (state.altM / 1000) + ' km';
@@ -2501,7 +2570,7 @@ function syncControls() {
   $('movePVal').textContent = state.moveP + '%';
   $('densityVal').textContent = state.density + ' emitters';
   $('moveP').value = state.moveP; $('density').value = state.density;
-  $('realism').checked = state.realism; $('truth').checked = state.truth; $('showPaths').checked = state.showPaths; $('showCover').checked = state.showCover; $('showNaive').checked = state.showNaive; $('showGhost').checked = state.showGhost;
+  $('realism').checked = state.realism; $('truth').checked = state.truth; $('showSpectrum').checked = state.showSpectrum; $('showPaths').checked = state.showPaths; $('showCover').checked = state.showCover; $('showNaive').checked = state.showNaive; $('showGhost').checked = state.showGhost;
   $('realNote').textContent = state.realism ? 'On: multipath fading, attitude error, airframe shadowing, GNSS drift, confuser links, and between-flight retuning.' : 'Off: clean illustration.';
   document.querySelectorAll('.tabs button').forEach((b, i) => b.setAttribute('aria-selected', String(i === state.tab)));
   document.querySelectorAll('#speed button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === state.speed)));
@@ -2517,6 +2586,7 @@ function fillStatic() {
     ['<svg width="26" height="16"><circle cx="13" cy="8" r="6" fill="none" stroke="#ff5f58" stroke-dasharray="2 3"/></svg>', 'Ghost (unresolved mirror)'],
     ['<svg width="26" height="16"><rect x="8" y="3" width="10" height="10" transform="rotate(45 13 8)" fill="#f3b443"/></svg>', 'Control station (truth)'],
     ['<svg width="26" height="16"><rect x="8" y="3" width="10" height="10" fill="none" stroke="#9fb2c8" stroke-width="1.6"/></svg>', 'Radio (truth)'],
+    ['<svg width="26" height="12"><rect x="4" y="3" width="2.5" height="2.5" fill="#f3b443" opacity=".7"/><rect x="12" y="7" width="2.5" height="2.5" fill="#9fb2c8" opacity=".7"/><rect x="19" y="2" width="2.5" height="2.5" fill="#a78bff" opacity=".7"/></svg>', 'Background spectrum (other emitters)'],
     ['<svg width="26" height="12"><line x1="1" y1="6" x2="25" y2="6" stroke="#36d1be" stroke-width="2"/></svg>', 'Current flight path'],
     ['<svg width="26" height="12"><line x1="1" y1="6" x2="25" y2="6" stroke="#9fb2c8" stroke-width="1.5" opacity=".5"/></svg>', 'Earlier flight path'],
     ['<svg width="26" height="12"><rect x="2" y="3" width="22" height="7" fill="#36d1be" opacity=".4"/></svg>', 'Coverage (where we listened)'],
@@ -2562,11 +2632,13 @@ $('reroll').addEventListener('click', () => { state.seed = newSeed(); rebuildWor
 $('seed').addEventListener('keydown', e => { if (e.key !== 'Enter') return; const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10); if (v.length >= 2) { state.seed = v; rebuildWorld(); setPlaying(true); } afterChange(); });
 function newSeed() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 6; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 let deb = null;
+$('nFlights').addEventListener('input', e => { state.nFlights = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuild(true); afterChange(); }, 200); });
 $('moveP').addEventListener('input', e => { state.moveP = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuild(true); afterChange(); }, 180); });
 $('density').addEventListener('input', e => { state.density = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuild(true); afterChange(); }, 180); });
 $('realism').addEventListener('change', e => { state.realism = e.target.checked; cmpOldSim = null; rebuild(true); afterChange(); });
-['truth', 'showPaths', 'showCover', 'showNaive', 'showGhost'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; }));
+['truth', 'showSpectrum', 'showPaths', 'showCover', 'showNaive', 'showGhost'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; }));
 $('play').addEventListener('click', () => { if (!state.playing && state.t >= timeline.total) state.t = 0; setPlaying(!state.playing); });
+$('toEnd').addEventListener('click', () => { state.t = timeline.total; setPlaying(false); if (!state.follow) fitView(); updatePanel(); });
 $('scrub').addEventListener('input', e => { state.t = +e.target.value / 1000 * timeline.total; updatePanel(); });
 $('speed').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.speed = +b.dataset.v; syncControls(); });
 $('zin').addEventListener('click', () => zoomAt(view.w / 2, view.h / 2, 1.5));

@@ -112,7 +112,7 @@ Where the first simulator locates emitters **in the air, during one mission**, w
 
 ## What it shows
 
-- **Tab 1, Campaign:** fly a sequence of predefined routes over one map. Each flight only records; when it lands, the recordings become one probability grid per emitter, and the grids add into the heat map. The next flight is then flown (or, with planning on, chosen from the heat so far). Scrub the timeline through flights, the between-flight processing, and the gaps.
+- **Tab 1, Campaign:** fly a sequence of predefined routes over one map. Each flight only records; when it lands, the recordings become one probability grid per emitter, and the grids add into the heat map. The next flight is then flown (or, with planning on, chosen from the heat so far). Scrub the timeline through flights, the between-flight processing, and the gaps, or jump straight to the final heat map with **End**. A **number-of-flights** slider (1–10) adds passes beyond the chosen plan; a **background-spectrum** toggle draws the ~150 other emitters the sorter must cut through; and a **Final result** panel lists each station's probability of being a control link and its location box once the campaign completes.
 - **Tab 2, Compare:** the same seed solved both ways, side by side — the live-tasking sim's crossed-bearing fixes against this one's heat map — plus a batch table across 8 maps and every setting.
 
 ## The receiver: bladeRF 2.0 micro xA4
