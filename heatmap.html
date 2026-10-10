@@ -2060,17 +2060,41 @@ function rssCost(bins, cx, cy, cz) {
   return c;
 }
 // Evaluate a posterior over a rectangular grid; returns {prob, max, mi, norm}
+// Same maths as brgCost + rssCost above, fused into one pass over flat per-bin arrays (the batch
+// runner evaluates millions of cells, and this loop is most of the runtime).
 function evalGrid(bins, useBrg, useRss, prior, x0, y0, res, nx, ny, ctFn, coneMode) {
   const n = nx * ny, logp = new Float64Array(n); let mx = -Infinity;
+  const m = bins.length, BX = new Float64Array(m), BY = new Float64Array(m), BZ = new Float64Array(m), HX = new Float64Array(m), HY = new Float64Array(m);
+  const BU = new Float64Array(m), BA = new Float64Array(m), ISG = new Float64Array(m), BW = new Float64Array(m), BR = new Float64Array(m), UA = new Uint8Array(m), PRED = new Float64Array(m);
+  let sw = 0;
+  for (let q = 0; q < m; q++) {
+    const b = bins[q]; BX[q] = b.x; BY[q] = b.y; BZ[q] = b.z; HX[q] = b.hx; HY[q] = b.hy; BU[q] = b.u; BA[q] = b.az; BW[q] = b.w; BR[q] = b.rss;
+    ISG[q] = 1 / (Math.hypot(b.sR, b.sB) || 0.02); UA[q] = (b.useAz != null ? b.useAz : !coneMode) ? 1 : 0; sw += b.w;
+  }
+  const CAP2 = CAP_Z * CAP_Z, K10 = 5 * PATHLOSS_EXP / Math.LN10, K0 = 30 * PATHLOSS_EXP, iRM = 1 / RSS_MODEL_DB, isw = 1 / Math.max(sw, 1e-6);
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const cx = x0 + (i + 0.5) * res, cy = y0 + (j + 0.5) * res;
     const pr0 = prior ? prior(cx, cy) : 0, k = j * nx + i;
     // own side of the line carries a tiny prior for a control station; skip the costly likelihood there
     if (pr0 <= PRIOR_OWN + 0.01) { logp[k] = -1e9; continue; }
     const cz = ctFn(cx, cy);
-    let L = pr0;
-    if (useBrg) L -= 0.5 * brgCost(bins, cx, cy, cz, coneMode);
-    if (useRss) L -= 0.5 * rssCost(bins, cx, cy, cz);
+    let cb = 0, sm = 0;
+    for (let q = 0; q < m; q++) {
+      const vx = cx - BX[q], vy = cy - BY[q], vz = cz - BZ[q], r2 = vx * vx + vy * vy + vz * vz;
+      if (useBrg) {
+        let z;
+        if (UA[q]) { let a = Math.atan2(vx, -vy) * R2D; if (a < 0) a += 360; let d = (BA[q] - a) % 360; if (d > 180) d -= 360; else if (d < -180) d += 360; z = d * D2R * ISG[q]; }
+        else { const r = Math.sqrt(r2) || 1; z = (BU[q] - (vx * HX[q] + vy * HY[q]) / r) * ISG[q]; }
+        const z2 = z * z; cb += (z2 < CAP2 ? z2 : CAP2) * BW[q];
+      }
+      if (useRss) { const e = BR[q] + K10 * Math.log(r2 || 1) - K0; PRED[q] = e; sm += BW[q] * e; }
+    }
+    let L = pr0 - 0.5 * cb;
+    if (useRss) {
+      const C = sm * isw; let cr = 0;
+      for (let q = 0; q < m; q++) { const z = (PRED[q] - C) * iRM, z2 = z * z; cr += (z2 < CAP2 ? z2 : CAP2) * BW[q]; }
+      L -= 0.5 * cr;
+    }
     logp[k] = L; if (L > mx) mx = L;
   }
   let norm = 0; const prob = new Float64Array(n);
@@ -2227,7 +2251,8 @@ function runCampaign(W, cfg) {
     used.push({ pat: plan.pat, lane: plan.lane });
     const fl = flyFlight(W, cfg, ctx, k, plan);
     flights.push(fl);
-    // process everything recorded through this flight
+    // process everything recorded through this flight (headless batch runs with fixed plans only need the last one)
+    if (cfg.finalOnly && k < nF - 1 && cfg.planning !== 'adaptive') { perFlight.push({ belief: null, grids: null, report: [], flightIdx: k }); continue; }
     const bel = beliefGrid(W, cfg, ctx, k);
     // per-emitter report for this flight's processing
     const report = [];

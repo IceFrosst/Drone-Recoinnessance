@@ -1,0 +1,11 @@
+{
+ "total": 180,
+ "experiments": [
+  {
+   "name": "e00-baseline",
+   "campaigns": 180,
+   "when": "2026-10-10T23:48:15.414Z",
+   "seconds": 117
+  }
+ ]
+}

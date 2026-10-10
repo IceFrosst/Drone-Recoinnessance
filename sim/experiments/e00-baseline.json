@@ -1,0 +1,13 @@
+{
+  "name": "e00-baseline",
+  "title": "E00 · Baseline (v1 model, before any change)",
+  "description": "The simulator exactly as it was at the start of this work (commit 3e3a535), measured headless. Every later experiment is compared against these numbers.",
+  "nSeeds": 12,
+  "variants": [
+    { "label": "A", "name": "bladeRF · combined · grid (headline)", "cfg": { "method": "both", "plan": "grid" } },
+    { "label": "B", "name": "bladeRF · bearings · grid", "cfg": { "method": "brg", "plan": "grid" } },
+    { "label": "C", "name": "bladeRF · combined · multi-angle", "cfg": { "method": "both", "plan": "multi" } },
+    { "label": "D", "name": "coherent array · grid", "cfg": { "rx": "array", "plan": "grid" } },
+    { "label": "E", "name": "bladeRF + array fused · grid", "cfg": { "rx": "fused", "plan": "grid" } }
+  ]
+}
