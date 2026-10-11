@@ -1,5 +1,5 @@
 {
- "total": 14562,
+ "total": 16362,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -156,6 +156,12 @@
    "campaigns": 1800,
    "when": "2026-10-11T04:23:22.079Z",
    "seconds": 1378
+  },
+  {
+   "name": "e26-countermeasures-highN",
+   "campaigns": 1800,
+   "when": "2026-10-11T04:44:46.765Z",
+   "seconds": 1284
   }
  ]
 }
