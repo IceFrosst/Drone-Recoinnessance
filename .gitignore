@@ -1,2 +1,5 @@
 node_modules/
 *.cpuprofile
+
+# transient batch run logs (results tables are committed as .md/.json)
+results/*.log
