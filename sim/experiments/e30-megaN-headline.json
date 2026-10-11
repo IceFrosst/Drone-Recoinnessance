@@ -1,0 +1,13 @@
+{
+  "name": "e30-megaN-headline",
+  "title": "E30 · Mega-N headline validation (clean + modern)",
+  "description": "Largest-N confirmation of the core result for maximum statistical confidence: bare bladeRF vs fully-equipped fused payload, 200 maps × 3 altitudes, on both the clean and modern threat worlds.",
+  "nSeeds": 200,
+  "base": { "method": "both", "plan": "multi", "memory": "fade" },
+  "variants": [
+    { "label": "A", "name": "bare · clean", "cfg": { "rx": "bladerf", "frontEnd": "none", "nulling": false, "excision": false, "cyclo": false, "sei": false } },
+    { "label": "B", "name": "equipped · clean", "cfg": { "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true } },
+    { "label": "C", "name": "bare · modern", "cfg": { "rx": "bladerf", "frontEnd": "none", "nulling": false, "excision": false, "cyclo": false, "sei": false }, "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 } },
+    { "label": "D", "name": "equipped · modern", "cfg": { "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true }, "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 } }
+  ]
+}
