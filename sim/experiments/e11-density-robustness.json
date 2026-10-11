@@ -1,0 +1,12 @@
+{
+  "name": "e11-density-robustness",
+  "title": "E11 · Robustness to background-spectrum density",
+  "description": "Does a denser sector (more clutter the sorter must cut through) degrade the equipped payload? Fused payload, everything on, Frontline RF, across 120 maps × 3 altitudes, at three clutter levels.",
+  "nSeeds": 120,
+  "base": { "method": "both", "plan": "grid", "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true },
+  "variants": [
+    { "label": "A", "name": "light clutter (80)", "cfg": { "density": 80 } },
+    { "label": "B", "name": "typical clutter (150)", "cfg": { "density": 150 } },
+    { "label": "C", "name": "heavy clutter (300)", "cfg": { "density": 300 } }
+  ]
+}

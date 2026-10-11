@@ -1,6 +1,6 @@
 # Experiment results
 
-Auto-generated from `results/*.md` by `sim/makedocs.js`. Total campaigns run across all experiments: **1,812** (ledger: `results/ledger.json`). Every table is paired — all variants fly the same maps and altitudes. All numbers are modelled, not field data.
+Auto-generated from `results/*.md` by `sim/makedocs.js`. Total campaigns run across all experiments: **2,712** (ledger: `results/ledger.json`). Every table is paired — all variants fly the same maps and altitudes. All numbers are modelled, not field data.
 
 ### E00 · Baseline (v1 model, before any change)
 
@@ -176,6 +176,28 @@ Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
 | B | +1.7 [-0.5, +3.8] | +5.8 [+4.2, +7.4] | +6.1 [+3.4, +8.9] |
 | C | +9.1 [+6.1, +11.9] | +13.6 [+11.6, +15.4] | +16.5 [+11.8, +21.2] |
 | D | +17.7 [+14.4, +21.0] | +16.9 [+15.1, +18.6] | +33.3 [+28.3, +39.2] |
+
+
+---
+
+### E07 · Headline validation across 100 maps
+
+The headline comparison again, but across 100 maps × 3 altitudes for a tight estimate. Clean target mix (no fibre/decoy), Frontline RF on, crossing grid.
+
+900 campaigns (3 variants × 100 maps × 3 altitudes), 662 s on 4 cores. Paired: every variant flies the same maps.
+
+| Variant | Hit ≤500 m (all HVT) | Located | Median err | Inside 95% | Wrong (>1.5 km) | Operators hit | Operators located | Jammers hit | False/decoy fixes |
+|---|---|---|---|---|---|---|---|---|---|
+| **A** · bare bladeRF | 53% (1335/2505) | 73% | 277 m | 89% | 13% | 20% (203/1005) | 56% | 73% | 84 |
+| **B** · filter→LNA + DSP | 57% (1419/2505) | 83% | 295 m | 87% | 15% | 27% (275/1005) | 82% | 72% | 0 |
+| **C** · fused, everything on | 68% (1705/2505) | 85% | 204 m | 89% | 11% | 47% (477/1005) | 86% | 74% | 0 |
+
+Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
+
+| Variant | Δ hit rate, all HVT | Δ located, all HVT | Δ hit rate, operators |
+|---|---|---|---|
+| B | +3.4 [+2.0, +4.8] | +10.1 [+8.9, +11.4] | +7.2 [+4.5, +9.8] |
+| C | +14.8 [+13.1, +16.6] | +12.2 [+11.0, +13.4] | +27.3 [+24.1, +30.7] |
 
 
 ---
