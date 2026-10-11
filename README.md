@@ -6,7 +6,7 @@ Open `index.html` in any browser. It is a single self-contained file with no bui
 
 > **Two simulators in this repo.** `index.html` (described below) locates emitters **in the air**, during one mission, with a coherent direction-finding array. `heatmap.html` records on **several predefined flights** and builds the heat map **after landing**, on a cheaper two-channel bladeRF. See [Heat-Map Recon](#heat-map-recon-heatmaphtml) at the end for how the two differ and what the trade costs.
 
-> **Start here for the latest work.** `docs/SUMMARY.md` is a one-page brief on the RF front end (preselect filter / LNA), the three jammer countermeasures (nulling, excision, cyclostationary detection), and the 2024-26 threats (fibre FPV, low-rate links, decoys) added to `heatmap.html`. `docs/CHANGELOG.md` tracks accuracy per version, `docs/RESULTS.md` has every A/B/C experiment table, `docs/research.md` lists the sourced parameters, and `sim/` is the headless batch runner that produced the numbers.
+> **Start here for the latest work.** `docs/Drone-RF-Recon-Report.pdf` is the full illustrated write-up (everything built, with the measured result of each change). `docs/SUMMARY.md` is the one-page brief on the RF front end (preselect filter / LNA), the three jammer countermeasures (nulling, excision, cyclostationary detection), and the 2024-26 threats (fibre FPV, low-rate links, decoys) added to `heatmap.html`. `docs/CHANGELOG.md` tracks accuracy per version, `docs/RESULTS.md` has every A/B/C experiment table (20,562 campaigns across 30 experiments), `docs/research.md` lists the sourced parameters, and `sim/` is the headless batch runner that produced the numbers.
 
 ## What it shows
 
