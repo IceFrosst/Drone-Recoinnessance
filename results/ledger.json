@@ -1,5 +1,5 @@
 {
- "total": 12762,
+ "total": 14562,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -150,6 +150,12 @@
    "campaigns": 750,
    "when": "2026-10-11T03:58:20.506Z",
    "seconds": 655
+  },
+  {
+   "name": "e25-frontend-highN",
+   "campaigns": 1800,
+   "when": "2026-10-11T04:23:22.079Z",
+   "seconds": 1378
   }
  ]
 }
