@@ -1,0 +1,16 @@
+{
+  "name": "e15-ladder-modern",
+  "title": "E15 · The accuracy ladder on the modern threat world",
+  "description": "Same cumulative ladder as e14, but on the 2024-26 world (fibre 30%, low-rate 30%, 2 decoys). Does each lever still pay off when the hard new threats are present? 60 maps × 3 altitudes, Frontline RF on.",
+  "nSeeds": 60,
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 },
+  "base": { "method": "both", "plan": "grid" },
+  "variants": [
+    { "label": "A", "name": "bare bladeRF", "cfg": { "frontEnd": "none" } },
+    { "label": "B", "name": "+ preselect filter", "cfg": { "frontEnd": "filter" } },
+    { "label": "C", "name": "+ LNA (filter→LNA)", "cfg": { "frontEnd": "filterlna" } },
+    { "label": "D", "name": "+ nulling + excision", "cfg": { "frontEnd": "filterlna", "nulling": true, "excision": true } },
+    { "label": "E", "name": "+ cyclostationary + SEI", "cfg": { "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true } },
+    { "label": "F", "name": "+ fused KrakenSDR", "cfg": { "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true } }
+  ]
+}
