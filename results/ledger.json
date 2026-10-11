@@ -1,5 +1,5 @@
 {
- "total": 16362,
+ "total": 20562,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -162,6 +162,24 @@
    "campaigns": 1800,
    "when": "2026-10-11T04:44:46.765Z",
    "seconds": 1284
+  },
+  {
+   "name": "e27-ladder-clean-highN",
+   "campaigns": 1800,
+   "when": "2026-10-11T05:04:15.979Z",
+   "seconds": 1169
+  },
+  {
+   "name": "e28-spoof-highN",
+   "campaigns": 600,
+   "when": "2026-10-11T05:12:04.332Z",
+   "seconds": 468
+  },
+  {
+   "name": "e29-ladder-modern-highN",
+   "campaigns": 1800,
+   "when": "2026-10-11T05:37:17.150Z",
+   "seconds": 1513
   }
  ]
 }

@@ -1,6 +1,6 @@
 # Experiment results
 
-Auto-generated from `results/*.md` by `sim/makedocs.js`. Total campaigns run across all experiments: **16,362** (ledger: `results/ledger.json`). Every table is paired — all variants fly the same maps and altitudes. All numbers are modelled, not field data.
+Auto-generated from `results/*.md` by `sim/makedocs.js`. Total campaigns run across all experiments: **20,562** (ledger: `results/ledger.json`). Every table is paired — all variants fly the same maps and altitudes. All numbers are modelled, not field data.
 
 ## Index
 
@@ -31,6 +31,9 @@ Auto-generated from `results/*.md` by `sim/makedocs.js`. Total campaigns run acr
 - **e24-ladder-bestops** — E24 · Accuracy ladder under best operational settings
 - **e25-frontend-highN** — E25 · Front end (high N)
 - **e26-countermeasures-highN** — E26 · Countermeasures (high N)
+- **e27-ladder-clean-highN** — E27 · Accuracy ladder clean (high N)
+- **e28-spoof-highN** — E28 · GNSS spoofing (high N)
+- **e29-ladder-modern-highN** — E29 · Accuracy ladder modern (high N)
 
 ### E00 · Baseline (v1 model, before any change)
 
@@ -678,6 +681,82 @@ Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
 | C | -0.2 [-0.9, +0.5] | +0.2 [-0.1, +0.5] | -0.6 [-1.6, +0.4] |
 | D | +1.7 [+0.4, +3.1] | +5.8 [+4.8, +6.8] | +5.5 [+3.3, +7.8] |
 | E | +4.0 [+2.7, +5.3] | +10.7 [+9.5, +11.9] | +6.2 [+3.7, +8.6] |
+
+
+---
+
+### E27 · Accuracy ladder clean (high N)
+
+e14 at 100 maps.
+
+1800 campaigns (6 variants × 100 maps × 3 altitudes), 1169 s on 4 cores. Paired: every variant flies the same maps.
+
+| Variant | Hit ≤500 m (all HVT) | Located | Median err | Inside 95% | Wrong (>1.5 km) | Operators hit | Operators located | Jammers hit | False/decoy fixes |
+|---|---|---|---|---|---|---|---|---|---|
+| **A** · bare | 53% (1335/2505) | 73% | 277 m | 89% | 13% | 20% (203/1005) | 56% | 73% | 84 |
+| **B** · +filter | 53% (1329/2505) | 74% | 272 m | 89% | 13% | 21% (213/1005) | 57% | 73% | 0 |
+| **C** · +LNA | 56% (1406/2505) | 78% | 281 m | 87% | 14% | 27% (271/1005) | 70% | 73% | 0 |
+| **D** · +null+excision | 57% (1428/2505) | 78% | 269 m | 87% | 14% | 27% (271/1005) | 68% | 73% | 0 |
+| **E** · +cyclo+SEI | 58% (1442/2505) | 88% | 307 m | 83% | 18% | 30% (305/1005) | 92% | 72% | 0 |
+| **F** · +fused | 68% (1712/2505) | 89% | 208 m | 85% | 14% | 49% (488/1005) | 96% | 74% | 0 |
+
+Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
+
+| Variant | Δ hit rate, all HVT | Δ located, all HVT | Δ hit rate, operators |
+|---|---|---|---|
+| B | -0.2 [-1.7, +1.3] | +0.5 [-0.4, +1.3] | +1.0 [-1.4, +3.5] |
+| C | +2.8 [+1.5, +4.2] | +5.3 [+4.3, +6.3] | +6.8 [+4.3, +9.0] |
+| D | +3.7 [+2.4, +5.0] | +4.8 [+3.9, +5.8] | +6.8 [+4.5, +9.1] |
+| E | +4.3 [+2.8, +5.9] | +14.4 [+13.0, +15.7] | +10.1 [+6.9, +13.5] |
+| F | +15.0 [+13.3, +16.9] | +16.3 [+14.9, +17.6] | +28.4 [+25.0, +32.3] |
+
+
+---
+
+### E28 · GNSS spoofing (high N)
+
+e13 at 100 maps.
+
+600 campaigns (2 variants × 100 maps × 3 altitudes), 468 s on 4 cores. Paired: every variant flies the same maps.
+
+| Variant | Hit ≤500 m (all HVT) | Located | Median err | Inside 95% | Wrong (>1.5 km) | Operators hit | Operators located | Jammers hit | False/decoy fixes |
+|---|---|---|---|---|---|---|---|---|---|
+| **A** · clean GNSS | 62% (1956/3144) | 79% | 210 m | 88% | 12% | 38% (515/1344) | 71% | 75% | 1200 |
+| **B** · spoofed | 13% (399/3144) | 78% | 956 m | 85% | 17% | 9% (123/1344) | 70% | 19% | 1200 |
+
+Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
+
+| Variant | Δ hit rate, all HVT | Δ located, all HVT | Δ hit rate, operators |
+|---|---|---|---|
+| B | -49.5 [-51.4, -47.7] | -0.6 [-1.0, -0.3] | -29.2 [-31.8, -26.7] |
+
+
+---
+
+### E29 · Accuracy ladder modern (high N)
+
+e15 at 100 maps.
+
+1800 campaigns (6 variants × 100 maps × 3 altitudes), 1513 s on 4 cores. Paired: every variant flies the same maps.
+
+| Variant | Hit ≤500 m (all HVT) | Located | Median err | Inside 95% | Wrong (>1.5 km) | Operators hit | Operators located | Jammers hit | False/decoy fixes |
+|---|---|---|---|---|---|---|---|---|---|
+| **A** · bare | 46% (1435/3144) | 60% | 251 m | 94% | 7% | 9% (127/1344) | 27% | 75% | 1336 |
+| **B** · +filter | 48% (1513/3144) | 60% | 236 m | 95% | 6% | 13% (168/1344) | 28% | 74% | 1190 |
+| **C** · +LNA | 49% (1525/3144) | 65% | 267 m | 92% | 10% | 15% (207/1344) | 39% | 75% | 1198 |
+| **D** · +null+excision | 50% (1585/3144) | 65% | 244 m | 92% | 9% | 15% (204/1344) | 39% | 75% | 1200 |
+| **E** · +cyclo+SEI | 54% (1699/3144) | 76% | 282 m | 87% | 15% | 23% (308/1344) | 67% | 75% | 1198 |
+| **F** · +fused | 62% (1956/3144) | 79% | 210 m | 88% | 12% | 38% (515/1344) | 71% | 75% | 1200 |
+
+Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
+
+| Variant | Δ hit rate, all HVT | Δ located, all HVT | Δ hit rate, operators |
+|---|---|---|---|
+| B | +2.5 [+1.4, +3.6] | +0.5 [-0.1, +1.2] | +3.1 [+1.6, +4.5] |
+| C | +2.9 [+1.7, +4.1] | +5.3 [+4.4, +6.2] | +6.0 [+4.2, +7.7] |
+| D | +4.8 [+3.5, +6.1] | +5.1 [+4.3, +6.0] | +5.7 [+3.9, +7.4] |
+| E | +8.4 [+6.9, +9.8] | +16.8 [+15.5, +17.9] | +13.5 [+10.9, +15.8] |
+| F | +16.6 [+15.1, +18.0] | +19.1 [+17.9, +20.3] | +28.9 [+26.0, +31.8] |
 
 
 ---
