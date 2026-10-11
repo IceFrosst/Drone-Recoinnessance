@@ -1,0 +1,150 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+  html,body{margin:0;background:#0b1322;overflow:hidden}
+  #c{display:block}
+</style></head><body>
+<canvas id="c" width="1280" height="720"></canvas>
+<script>
+'use strict';
+// Deterministic flight-loop animation for the "FLY · RECORD · RETURN · REVEAL" slide.
+// Pure function of time: __render(tMs) draws the exact frame, so it renders to a clean looping MP4.
+const C = document.getElementById('c'), X = C.getContext('2d');
+const W = C.width, H = C.height, LOOP = 8000;              // 8 s seamless loop
+const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t;
+const ease=t=>t*t*(3-2*t);
+// palette (matches the slide)
+const BG='#0b1322', INK='#8ea0b6', TEAL='#36d1be', AMBER='#f3b443', FRONT='#2a3a52';
+// sector geometry
+const marginX=90, frontX=W*0.60;                          // enemy front line ~60% across
+// hidden enemy emitters (RF targets) on the enemy side
+const EMIT=[{x:W*0.72,y:H*0.34},{x:W*0.80,y:H*0.60},{x:W*0.67,y:H*0.72},{x:W*0.88,y:H*0.45}];
+// launch + route: out fast to the right across the front, bank, return
+const L={x:marginX,y:H*0.52};
+const OUT={x:W*0.90,y:H*0.40};                            // far out point
+// dotted background texture (precomputed)
+const DOTS=[]; for(let i=0;i<260;i++){DOTS.push([Math.random()*W,Math.random()*H,Math.random()*1.6+0.3,Math.random()*0.5+0.15]);}
+
+// drone position as a function of phase p in [0,1] over the fly+return portion
+function dronePos(seg){ // seg: 0..1 across the whole out-and-back
+  // out leg 0..0.5 (L -> OUT, with a slight bow), return 0.5..1 (OUT -> L, parallel offset)
+  if(seg<0.5){ const t=ease(seg/0.5); const bow=Math.sin(t*Math.PI)*-70;
+    return {x:lerp(L.x,OUT.x,t), y:lerp(L.y,OUT.y,t)+bow, dir:1};
+  } else { const t=ease((seg-0.5)/0.5); const bx=lerp(OUT.x,L.x,t), by=lerp(OUT.y+120,L.y,t)+Math.sin(t*Math.PI)*70;
+    return {x:bx, y:by, dir:-1};
+  }
+}
+
+function roundRect(x,y,w,h,r){X.beginPath();X.moveTo(x+r,y);X.arcTo(x+w,y,x+w,y+h,r);X.arcTo(x+w,y+h,x,y+h,r);X.arcTo(x,y+h,x,y,r);X.arcTo(x,y,x+w,y,r);X.closePath();}
+
+function label(phase){
+  const steps=[['1','FLY'],['2','RECORD'],['3','RETURN'],['4','REVEAL']];
+  X.save(); X.textBaseline='middle';
+  const bx=40,by=H-56;
+  for(let i=0;i<4;i++){ const on=(i===phase);
+    X.font='700 15px Barlow, system-ui, sans-serif';
+    const n=steps[i][0], t=steps[i][1];
+    const cx=bx+i*150;
+    X.fillStyle=on?AMBER:'#44566c'; X.fillText(n, cx, by);
+    X.fillStyle=on?'#dce6f1':'#5a6d84'; X.fillText(t, cx+16, by);
+    if(on){X.fillStyle=AMBER; X.beginPath(); X.arc(cx-10,by,3.5,0,7); X.fill();}
+  }
+  X.restore();
+}
+
+function __render(tMs){
+  const t=((tMs%LOOP)+LOOP)%LOOP;
+  // phase timeline
+  // 0-500 fade-in, 500-3200 fly out (RECORD), 3200-5200 return, 5200-7200 reveal, 7200-8000 fade to loop
+  const fadeIn=clamp(t/450,0,1);
+  const flyT=clamp((t-500)/2700,0,1);          // out leg
+  const retT=clamp((t-3200)/2000,0,1);         // return leg
+  const revealT=clamp((t-5200)/1700,0,1);      // heat reveal
+  const outro=clamp((t-7250)/750,0,1);         // fade everything back for seamless loop
+  const vis=fadeIn*(1-outro);
+
+  // overall out-and-back segment (0..1): fly fills 0..0.5, return fills 0.5..1
+  let seg = flyT<1 ? flyT*0.5 : 0.5 + retT*0.5;
+  const flying = t>=500 && t<5200;
+  const d = dronePos(clamp(seg,0,1));
+
+  // ---- background ----
+  X.fillStyle=BG; X.fillRect(0,0,W,H);
+  X.save(); X.globalAlpha=0.9*vis;
+  for(const [x,y,r,a] of DOTS){ X.fillStyle='rgba(120,150,185,'+ (a*0.5) +')'; X.beginPath(); X.arc(x,y,r,0,7); X.fill(); }
+  X.restore();
+  // own/enemy tint
+  X.save(); X.globalAlpha=vis;
+  X.fillStyle='rgba(54,209,190,0.03)'; X.fillRect(0,0,frontX,H);
+  X.fillStyle='rgba(243,180,67,0.035)'; X.fillRect(frontX,0,W-frontX,H);
+  // front line (wavy)
+  X.beginPath(); for(let y=-10;y<=H+10;y+=12){ const xx=frontX+Math.sin(y*0.015+1.2)*16+Math.sin(y*0.04)*7; y===-10?X.moveTo(xx,y):X.lineTo(xx,y);}
+  X.strokeStyle=FRONT; X.lineWidth=2; X.setLineDash([2,6]); X.stroke(); X.setLineDash([]);
+  X.fillStyle='#4a6079'; X.font='600 12px Barlow, system-ui'; X.textAlign='left';
+  X.fillText('OWN', 24, 26); X.textAlign='right'; X.fillText('ENEMY FRONT', W-24, 26); X.textAlign='left';
+  X.restore();
+
+  // ---- heat reveal (REVEAL): amber blooms + located crosshairs ----
+  if(revealT>0){ X.save();
+    for(let i=0;i<EMIT.length;i++){ const e=EMIT[i];
+      const d2=ease(clamp(revealT*1.25 - i*0.12,0,1)); if(d2<=0) continue;
+      const R=lerp(10,70,d2);
+      const g=X.createRadialGradient(e.x,e.y,0,e.x,e.y,R);
+      g.addColorStop(0,'rgba(243,180,67,'+(0.55*d2*vis)+')'); g.addColorStop(0.5,'rgba(243,160,60,'+(0.22*d2*vis)+')'); g.addColorStop(1,'rgba(243,160,60,0)');
+      X.fillStyle=g; X.beginPath(); X.arc(e.x,e.y,R,0,7); X.fill();
+      if(d2>0.6){ const ca=(d2-0.6)/0.4*vis; X.strokeStyle='rgba(255,255,255,'+(0.85*ca)+')'; X.lineWidth=1.4;
+        X.beginPath(); X.moveTo(e.x-9,e.y); X.lineTo(e.x+9,e.y); X.moveTo(e.x,e.y-9); X.lineTo(e.x,e.y+9); X.stroke();
+        X.strokeStyle='rgba(243,180,67,'+(0.9*ca)+')'; X.beginPath(); X.ellipse(e.x,e.y,15,11,0.5,0,7); X.stroke();
+      }
+    }
+    X.restore();
+  }
+
+  // ---- emitters flicker while being recorded ----
+  X.save();
+  for(let i=0;i<EMIT.length;i++){ const e=EMIT[i];
+    const near = flying && Math.hypot(d.x-e.x,d.y-e.y) < 230;
+    const base = 0.15 + (near?0.5:0)*(0.6+0.4*Math.sin(t*0.03+i));
+    X.fillStyle='rgba(243,180,67,'+(base*vis)+')'; X.beginPath(); X.arc(e.x,e.y,3,0,7); X.fill();
+    // bearing ping line from drone to emitter when recording nearby
+    if(near){ X.strokeStyle='rgba(54,209,190,'+(0.35*vis)+')'; X.lineWidth=1; X.setLineDash([3,5]);
+      X.beginPath(); X.moveTo(d.x,d.y); X.lineTo(e.x,e.y); X.stroke(); X.setLineDash([]);
+      const pr=((t*0.12+i*30)%60)/60; X.strokeStyle='rgba(243,180,67,'+((1-pr)*0.5*vis)+')'; X.lineWidth=1.5;
+      X.beginPath(); X.arc(e.x,e.y,4+pr*18,0,7); X.stroke();
+    }
+  }
+  X.restore();
+
+  // ---- flight path traced so far ----
+  X.save(); X.globalAlpha=vis; X.strokeStyle='rgba(54,209,190,0.5)'; X.lineWidth=2; X.setLineDash([6,6]);
+  X.beginPath(); const N=60; let started=false;
+  for(let k=0;k<=N;k++){ const s=(k/N)*clamp(seg,0,1); const p=dronePos(s); if(!started){X.moveTo(p.x,p.y);started=true;} else X.lineTo(p.x,p.y); }
+  X.stroke(); X.setLineDash([]); X.restore();
+
+  // ---- the drone (fast chevron with glow + motion streak) ----
+  if(vis>0.01){ X.save(); X.translate(d.x,d.y);
+    // heading from path tangent
+    const s2=clamp(seg+0.004*d.dir,0,1), pn=dronePos(s2); let ang=Math.atan2(pn.y-d.y,(pn.x-d.x)*d.dir); ang=Math.atan2((pn.y-d.y),(pn.x-d.x));
+    X.rotate(ang);
+    // motion streak (sense of speed)
+    const grd=X.createLinearGradient(-60,0,0,0); grd.addColorStop(0,'rgba(54,209,190,0)'); grd.addColorStop(1,'rgba(54,209,190,0.5)');
+    X.fillStyle=grd; X.globalAlpha=vis; X.beginPath(); X.moveTo(-60,-2); X.lineTo(0,-5); X.lineTo(0,5); X.lineTo(-60,2); X.closePath(); X.fill();
+    // glow
+    X.shadowColor=TEAL; X.shadowBlur=14; X.fillStyle=TEAL;
+    X.beginPath(); X.moveTo(14,0); X.lineTo(-8,-8); X.lineTo(-3,0); X.lineTo(-8,8); X.closePath(); X.fill();
+    X.restore();
+  }
+
+  // phase label
+  let phase=0; if(t<500)phase=0; else if(t<3200)phase=1; else if(t<5200)phase=2; else phase=3;
+  X.save(); X.globalAlpha=vis; label(phase); X.restore();
+
+  // brand + loop-safe vignette
+  X.save(); X.globalAlpha=vis; X.fillStyle='rgba(243,180,67,0.9)'; X.font='700 16px Barlow, system-ui'; X.textAlign='right';
+  X.fillText('RFlex', W-24, H-30); X.fillStyle='rgba(142,160,182,0.7)'; X.font='500 11px Barlow, system-ui';
+  X.fillText('passive RF recon · modelled', W-24, H-14); X.restore();
+}
+window.__render=__render;
+// live preview loop (not used for capture)
+let t0=performance.now();
+function raf(now){ __render(now-t0); requestAnimationFrame(raf); }
+if(!window.__capture) requestAnimationFrame(raf);
+</script></body></html>
