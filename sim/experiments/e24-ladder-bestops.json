@@ -1,0 +1,15 @@
+{
+  "name": "e24-ladder-bestops",
+  "title": "E24 · Accuracy ladder under best operational settings",
+  "description": "The cumulative lever ladder on the modern world, but flown with the best operational choices (multi-angle plan, memory=fade) rather than e15's grid/keep-all. Shows each hardware/DSP lever's contribution once tasking is also optimal. 50 maps × 3 altitudes.",
+  "nSeeds": 50,
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 },
+  "base": { "method": "both", "plan": "multi", "memory": "fade" },
+  "variants": [
+    { "label": "A", "name": "bare bladeRF", "cfg": { "rx": "bladerf", "frontEnd": "none" } },
+    { "label": "B", "name": "+ filter→LNA", "cfg": { "rx": "bladerf", "frontEnd": "filterlna" } },
+    { "label": "C", "name": "+ nulling + excision", "cfg": { "rx": "bladerf", "frontEnd": "filterlna", "nulling": true, "excision": true } },
+    { "label": "D", "name": "+ cyclostationary + SEI", "cfg": { "rx": "bladerf", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true } },
+    { "label": "E", "name": "+ fused KrakenSDR", "cfg": { "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true } }
+  ]
+}
