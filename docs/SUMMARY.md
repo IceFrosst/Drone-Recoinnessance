@@ -52,6 +52,10 @@ Bare bladeRF as the project started → fully-equipped fused payload (filter→L
 - **GNSS spoofing** is the sharpest warning: it drops actionable fixes (≤500 m) from 69 % to 14 % and quadruples median error, while the located count and the 95 %-ellipse calibration barely move — the system reports just as many confident fixes, all displaced. No RF countermeasure touches it; the fix is anti-spoof/inertial navigation, out of this payload's scope. A tight ellipse is not proof a fix is right.
 - The front-end and null-depth numbers are notional-but-calibrated; real nulling depends on phase-calibrating two channels on a vibrating airframe, which a real build still has to prove.
 
+## An operational insight the sim surfaces
+
+Against a **relocating / retuning enemy**, more sorties are not automatically better. With "keep all" memory, flying 8 passes instead of 2 *lowers* operator fixes within 500 m (45 % → 24 %) because stale recordings from teams' old positions pile up and smear the fix — and 22 % of the fixes go confidently wrong (`e16`). Fading old recordings fixes it: at 8 flights, "fade ½ per flight" lifts operators to 42 % and "last flight only" to 50 %, with the confidently-wrong rate dropping to 6 % and 1 % (`e17`). The lesson for tasking: against a moving enemy, **freshness beats quantity** — forget old data rather than averaging over where the target *used* to be.
+
 ## How it was measured
 
 `sim/engine.js` runs the model from `heatmap.html` headless; `sim/batch.js` runs paired A/B/C experiments (every variant flies the same maps) across thousands of campaigns on worker threads. Results in `results/`, accuracy-per-version in `docs/CHANGELOG.md`, every version a git commit for rollback.

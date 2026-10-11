@@ -1,5 +1,5 @@
 {
- "total": 8532,
+ "total": 8892,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -102,6 +102,12 @@
    "campaigns": 480,
    "when": "2026-10-11T02:47:10.435Z",
    "seconds": 396
+  },
+  {
+   "name": "e17-memory-fix",
+   "campaigns": 360,
+   "when": "2026-10-11T02:54:48.689Z",
+   "seconds": 391
   }
  ]
 }
