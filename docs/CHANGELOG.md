@@ -8,7 +8,8 @@ Every version is a git commit (and a local tag) so a bad change can be rolled ba
 | v1.1 | `9a9f99c` | headless batch runner + likelihood speed-up (model unchanged) |
 | v1.2 | `a1ed0c6` | jammer interference model (merged) |
 | v1.3 | `031138a` | RF front end + EW countermeasures |
-| v1.4 | (this commit) | specific emitter identification (SEI) |
+| v1.4 | `79393f4` | specific emitter identification (SEI) |
+| v1.5 | (this commit) | GNSS spoofing (confidently-wrong failure) |
 
 The one headline number, from `e05-headline` (24 maps × 3 altitudes = 72 campaigns per variant, paired — every variant flies the same maps), **drone-operator fixes within 500 m**:
 
@@ -24,6 +25,11 @@ Fully equipped vs the bare starting payload: operator fixes within 500 m **more 
 Validated at scale (`e07`, 100 maps × 3 altitudes = 300 campaigns per variant): the fused everything-on payload lifts operators within 500 m from **20 % to 47 %** (paired Δ +27.3 pp, 95 % bootstrap CI [+24.1, +30.7]) and operators located from 56 % to 86 %. On the full 2024-26 threat mix (`e10`, 100 maps), the gain holds against fibre FPV, low-rate links and decoys.
 
 ---
+
+## v1.5 — GNSS spoofing (2026-10-11)
+
+A spoofer makes our own receiver compute a **wrong position with full confidence** — a coherent offset shared by every recording in the belt, not the random drift the denial belt already models. The fix stays tight but is systematically displaced, and no RF front-end or DSP countermeasure touches it (the real fix is inertial / multi-constellation / anti-spoof GNSS, which this payload does not model). New `spoof` Scenario toggle, off by default.
+- `e13-gnss-spoof` (240 campaigns): spoofing drops actionable fixes (≤500 m) from **69 % to 14 %** (paired Δ −55 pp) and quadruples median error (209 → 948 m) — while the **located count is unchanged (90 % → 89 %)** and the 95 %-ellipse calibration barely moves. The confidently-wrong failure a tight ellipse cannot flag: the system reports just as many fixes, all displaced.
 
 ## v1.4 — specific emitter identification (SEI) (2026-10-11)
 
