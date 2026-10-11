@@ -1,0 +1,12 @@
+{
+  "name": "e07-validation",
+  "title": "E07 · Headline validation across 100 maps",
+  "description": "The headline comparison again, but across 100 maps × 3 altitudes for a tight estimate. Clean target mix (no fibre/decoy), Frontline RF on, crossing grid.",
+  "nSeeds": 100,
+  "base": { "method": "both", "plan": "grid" },
+  "variants": [
+    { "label": "A", "name": "bare bladeRF", "cfg": { "frontEnd": "none" } },
+    { "label": "B", "name": "filter→LNA + DSP", "cfg": { "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true } },
+    { "label": "C", "name": "fused, everything on", "cfg": { "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true } }
+  ]
+}

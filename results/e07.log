@@ -1,0 +1,6 @@
+[batch] e07-validation: 3 variants × 100 seeds × 3 altitudes = 900 campaigns on 4 workers
+[batch] 45/900  41s elapsed, ~784s left
+[batch] 90/900  76s elapsed, ~683s left
+[batch] 135/900  112s elapsed, ~637s left
+[batch] 180/900  145s elapsed, ~580s left
+[batch] 225/900  186s elapsed, ~558s left
