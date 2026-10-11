@@ -1,0 +1,14 @@
+{
+  "name": "e18-mobility-sweep",
+  "title": "E18 · Robustness to enemy mobility",
+  "description": "The recommended payload (fused, everything on, memory=fade — the good setting from e17) against teams that relocate between flights at increasing rates, modern threat world, 40 maps × 3 altitudes. How does accuracy hold as the enemy moves more?",
+  "nSeeds": 40,
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 },
+  "base": { "method": "both", "plan": "grid", "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true, "memory": "fade" },
+  "variants": [
+    { "label": "A", "name": "static enemy (0%)", "cfg": { "moveP": 0 } },
+    { "label": "B", "name": "relocate 20%/flight", "cfg": { "moveP": 0.20 } },
+    { "label": "C", "name": "relocate 40%/flight", "cfg": { "moveP": 0.40 } },
+    { "label": "D", "name": "relocate 70%/flight", "cfg": { "moveP": 0.70 } }
+  ]
+}
