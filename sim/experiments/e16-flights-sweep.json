@@ -1,0 +1,14 @@
+{
+  "name": "e16-flights-sweep",
+  "title": "E16 · How many flights does the recommended payload need?",
+  "description": "The fused, fully-equipped payload flown with 2, 4, 6, 8 flights (extra passes on fresh headings) across 40 maps × 3 altitudes, modern threat world. The operational question: how fast does accuracy build with sorties?",
+  "nSeeds": 40,
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 },
+  "base": { "method": "both", "plan": "grid", "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true },
+  "variants": [
+    { "label": "A", "name": "2 flights", "cfg": { "nFlights": 2 } },
+    { "label": "B", "name": "4 flights", "cfg": { "nFlights": 4 } },
+    { "label": "C", "name": "6 flights", "cfg": { "nFlights": 6 } },
+    { "label": "D", "name": "8 flights", "cfg": { "nFlights": 8 } }
+  ]
+}
