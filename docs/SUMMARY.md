@@ -16,6 +16,7 @@ A one-page brief on the passive RF direction-finding payload (bladeRF 2.0 micro,
 | **Adaptive nulling** (free, code) | steers a spatial null onto the jammer (MVDR) | clears co-channel burying & bearing bias | 2 channels = **one** null; a 2nd jammer needs more channels (→ Kraken/fused); digital, so it can't fix overload |
 | **Time/frequency excision** (free) | notches a swept jammer / blanks a pulsed one | recovers the gaps a non-continuous jammer leaves | nothing to recover against a barrage |
 | **Cyclostationary detection** (free) | detects hop/packet cadence *below* the energy floor | **biggest software win**; the only thing that catches low-rate spread links | only helps known signatures; needs several cycles |
+| **SEI — specific emitter ID** (free) | a hardware fingerprint re-links an operator after it retunes | retune no longer resets the track: operators located 85 % → 96 % when they change settings | needs enough SNR to read the fingerprint (strong emitters only) |
 
 The one systems insight that ties it together: **the filter (analog, before the ADC) is the only thing that fixes front-end overload; the DSP (after the ADC) is the only thing that fixes co-channel interference. They are complementary, not interchangeable — you need both.**
 
@@ -33,6 +34,7 @@ Bare bladeRF as the project started → fully-equipped fused payload (filter→L
 
 - **Fibre-optic FPV** emit nothing, so they are unlocatable at any price. With 30 % of operators on fibre, ~70 % is the ceiling, and the sim shows it rather than hiding it.
 - **Decoys** really transmit, so no direction-finding removes them — the decoy false-fix count is identical across every equipped payload.
+- **GNSS spoofing** is the sharpest warning: it drops actionable fixes (≤500 m) from 69 % to 14 % and quadruples median error, while the located count and the 95 %-ellipse calibration barely move — the system reports just as many confident fixes, all displaced. No RF countermeasure touches it; the fix is anti-spoof/inertial navigation, out of this payload's scope. A tight ellipse is not proof a fix is right.
 - The front-end and null-depth numbers are notional-but-calibrated; real nulling depends on phase-calibrating two channels on a vibrating airframe, which a real build still has to prove.
 
 ## How it was measured
