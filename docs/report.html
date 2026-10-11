@@ -1,0 +1,161 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Drone RF Recon — Work Report</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font: 11px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #15202b; margin: 0; }
+  h1 { font-size: 23px; margin: 0 0 2px; letter-spacing: -0.2px; }
+  h2 { font-size: 15px; margin: 22px 0 7px; padding-bottom: 4px; border-bottom: 2px solid #2b6cb0; color: #1a365d; }
+  h3 { font-size: 12.5px; margin: 14px 0 4px; color: #2b6cb0; }
+  p { margin: 6px 0; }
+  .sub { color: #5a6b7b; font-size: 11px; margin: 2px 0 0; }
+  .lead { font-size: 12px; background: #f0f6ff; border-left: 3px solid #2b6cb0; padding: 9px 12px; border-radius: 4px; margin: 10px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 4px; font-size: 10px; }
+  th, td { border: 1px solid #d3dce6; padding: 4px 7px; text-align: left; vertical-align: top; }
+  th { background: #eef3f8; font-weight: 600; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .good { color: #1b7a43; font-weight: 600; }
+  .bad { color: #b4232a; font-weight: 600; }
+  .kpi { display: flex; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
+  .kpi div { flex: 1; min-width: 120px; background: #f7fafc; border: 1px solid #d3dce6; border-radius: 6px; padding: 9px 11px; }
+  .kpi b { display: block; font-size: 19px; color: #1a365d; }
+  .kpi span { font-size: 9.5px; color: #5a6b7b; text-transform: uppercase; letter-spacing: .04em; }
+  ul { margin: 5px 0; padding-left: 18px; } li { margin: 3px 0; }
+  code { background: #eef3f8; padding: 1px 4px; border-radius: 3px; font-size: 9.5px; }
+  .note { font-size: 9.5px; color: #5a6b7b; }
+  .foot { margin-top: 18px; padding-top: 8px; border-top: 1px solid #d3dce6; font-size: 9px; color: #7a8a99; }
+  .pb { page-break-before: always; }
+</style></head><body>
+
+<h1>Drone RF Reconnaissance Simulator — Work Report</h1>
+<p class="sub">Overnight autonomous iteration · 2026-10-10 23:36 → 2026-10-11 05:53 UTC (~6.3 h) · repo <code>IceFrosst/Drone-Recoinnessance</code>, branch <code>claude/sleepy-ride-whzlrx</code> · published artifact "Heat-Map Recon" v12</p>
+
+<div class="lead"><b>Headline.</b> Against the realistic 2024–26 threat environment, upgrading the bladeRF payload from "as handed over" to the fully-equipped recommendation raised drone-operator fixes within 500&nbsp;m from <b>10% to 47%</b> (nearly 5×) and operators located from <b>20% to 70%</b> — validated over 120 maps (95% CI on the gain: +35 to +40 pp). On a clean sector the same upgrade takes operators within 500&nbsp;m from <b>21% to 68%</b>. All front-end spur false-fixes were eliminated. Every number is a modelled estimate, calibrated to published hardware/EW figures, not a field result.</div>
+
+<div class="kpi">
+  <div><b>20,562</b><span>simulations run (goal: 5,000)</span></div>
+  <div><b>30</b><span>paired A/B/C experiments</span></div>
+  <div><b>+27 pp</b><span>operators ≤500 m (modern, 100-map)</span></div>
+  <div><b>6</b><span>versioned releases (v1.0→v1.5)</span></div>
+</div>
+
+<h2>1 · What the simulator is</h2>
+<p>A browser simulator of passive RF direction-finding from a fixed-wing drone over a contested front. It flies predefined routes, records bursts (frequency, strength, a two-channel cone angle), and after landing builds a probability heat map of where each high-value emitter sits — drone operators (UAS), jammers (EW), command posts (C2) and comms relays. The published artifact is the heat-map simulator (<code>heatmap.html</code>); the repo also holds the live-tasking simulator (<code>index.html</code>).</p>
+
+<h2>2 · What was built today, and what each change did</h2>
+
+<h3>Jammer countermeasures (the three requested "big levers")</h3>
+<table>
+<tr><th>Lever</th><th>What it does in the model</th><th>Measured result (A/B/C)</th></tr>
+<tr><td><b>Adaptive nulling</b> (MVDR)</td><td>Steers a spatial null onto the jammer's bearing using the two coherent channels. 2 channels = 1 null; 5 = up to 4. A null is a direction, so it also notches wanted signals near the jammer; depth is calibration-limited. Digital (post-ADC), so it clears co-channel burying/bias but not front-end overload.</td><td>Small on its own (+1–3 pp) — only targets co-band with a jammer benefit. The <b>2-ch = 1-null limit is real</b>: under 3 jammers a bladeRF holds operators at 18% while the fused 5-ch payload reaches 38% (E04). Fused holds flat across 1/2/3 jammers (E21).</td></tr>
+<tr><td><b>Time/frequency excision</b></td><td>Notches a swept jammer's tone / blanks a pulsed jammer's slices; keeps the rest. Needs the jammer to have a waveform (barrage / swept / pulsed, now modelled).</td><td>Recovers swept/pulsed gaps (median error −10 m, +2 pp operators); <b>zero help against a barrage</b> — A=B identical (E09). Honest and as designed.</td></tr>
+<tr><td><b>Cyclostationary detection</b></td><td>Detects a control link's hop/packet cadence below the energy-detector floor (a matched cyclic feature).</td><td><b>Biggest software win</b>: operators located 56%→73% (E03); the only thing that catches the low-rate spread links that sit below the noise floor.</td></tr>
+</table>
+
+<h3>RF front end — preselect filter + LNA (and "does an LNA cost us?")</h3>
+<p>Answered with data. A preselect filter sits <i>before</i> the ADC, so it is the only thing that stops an out-of-band jammer overloading the receiver; the LNA is digital-sensitivity only and <i>lowers</i> overload headroom. Calibrated to measured bladeRF noise figure (4.9–15.8 dB across band) and ADI app-note 1836 (a 15 dB LNA: +3.8 dB sensitivity, −15 dB dynamic range).</p>
+<table>
+<tr><th>Front end</th><th class="n">Operators located</th><th class="n">False fixes (spurs)</th><th>Verdict</th></tr>
+<tr><td>Bare SDR</td><td class="n">56%</td><td class="n bad">13</td><td>baseline</td></tr>
+<tr><td>LNA only</td><td class="n">69%</td><td class="n bad">18</td><td>+sensitivity but <b>MORE</b> false alarms — the real LNA cost</td></tr>
+<tr><td>Preselect filter only</td><td class="n">58%</td><td class="n good">0</td><td>kills spur false-fixes; ~1 dB sensitivity cost</td></tr>
+<tr><td><b>Filter → LNA</b></td><td class="n good">70%</td><td class="n good">0</td><td><b>the build:</b> both the sensitivity and the protection</td></tr>
+<tr><td>LNA → Filter</td><td class="n">67%</td><td class="n bad">22</td><td>wrong order — LNA saturates first (worst false fixes)</td></tr>
+</table>
+<p class="note">E02/E25 (up to 1,800 campaigns). The false-fix column is the whole story: the filter directly fixes "effect (a)" you named.</p>
+
+<h3>Real-world threats &amp; new technology (both sides, 2024–26)</h3>
+<ul>
+<li><b>Jammer waveforms</b> — barrage / swept / pulsed, each with duty &amp; sweep; drives the excision result above.</li>
+<li><b>Fibre-optic FPV</b> — emit <i>no</i> RF, so unlocatable at any price. With 30% on fibre the ceiling is ~70% of operators — shown, not hidden (Russia 30–50% / Ukraine ~15% of FPV).</li>
+<li><b>Low-rate LoRa/ELRS links</b> (~−120 dBm) — sit below an energy detector; only cyclostationary detection catches them.</li>
+<li><b>Decoy emitters</b> — transmit a real control-link signature from empty ground → a false fix <b>no direction-finding removes</b> (identical decoy-fix count across every equipped payload).</li>
+<li><b>SEI (specific emitter ID)</b> — a hardware fingerprint re-links an operator after it retunes. Operators located <b>85%→96%</b> when teams change link settings (E12).</li>
+<li><b>GNSS spoofing</b> — a coherent false position (distinct from the existing denial/drift). <b>The sharpest warning:</b> actionable fixes (≤500 m) collapse <b>69%→14%</b> while the located count and the 95%-ellipse calibration barely move — a tight ellipse is no proof a fix is right, and no RF countermeasure touches it (E13/E28).</li>
+</ul>
+
+<h2 class="pb">3 · The accuracy ladder — each lever's cumulative contribution</h2>
+<p>Starting from the bare bladeRF, adding one capability at a time (each row keeps everything above). Clean sector, 100 maps × 3 altitudes, Frontline RF on (E14/E27).</p>
+<table>
+<tr><th>Payload</th><th class="n">Operators ≤500 m</th><th class="n">Operators located</th><th class="n">All-HVT located</th><th class="n">False fixes</th></tr>
+<tr><td>bare bladeRF</td><td class="n">20%</td><td class="n">56%</td><td class="n">73%</td><td class="n bad">48</td></tr>
+<tr><td>+ preselect filter</td><td class="n">22%</td><td class="n">57%</td><td class="n">74%</td><td class="n good">0</td></tr>
+<tr><td>+ LNA (filter→LNA)</td><td class="n">28%</td><td class="n">70%</td><td class="n">79%</td><td class="n good">0</td></tr>
+<tr><td>+ nulling + excision</td><td class="n">27%</td><td class="n">69%</td><td class="n">78%</td><td class="n good">0</td></tr>
+<tr><td>+ cyclostationary + SEI</td><td class="n">30%</td><td class="n">92%</td><td class="n">88%</td><td class="n good">0</td></tr>
+<tr><td><b>+ fused KrakenSDR</b></td><td class="n good">49%</td><td class="n good">96%</td><td class="n good">90%</td><td class="n good">0</td></tr>
+</table>
+<p class="note">The filter zeroes false fixes; the LNA buys sensitivity; cyclostationary + SEI lift <i>located</i> sharply (weak and retuned operators recovered); the fused Kraken delivers the biggest jump in <i>actionable</i> fixes (whole band, mirror-free).</p>
+
+<h2>4 · The definitive before/after (high-N)</h2>
+<p>Bare bladeRF vs the fully-equipped fused payload, 120 maps × 3 altitudes each, for tight intervals (E22/E23).</p>
+<table>
+<tr><th>Sector</th><th class="n">Operators ≤500 m</th><th class="n">Operators located</th><th>Δ operators ≤500 m (95% CI)</th></tr>
+<tr><td>Clean</td><td class="n">21% → <b class="good">68%</b></td><td class="n">45% → 96%</td><td>+46.4 pp [+43.5, +49.5]</td></tr>
+<tr><td>Modern (fibre / low-rate / decoys)</td><td class="n">10% → <b class="good">47%</b></td><td class="n">20% → 70%</td><td>+37.5 pp [+35.1, +39.7]</td></tr>
+</table>
+<p class="note">The modern figure is lower because ~30% of operators fly fibre (no RF) — the honest ceiling. Calibration held: truth inside the 95% ellipse ~90% throughout.</p>
+
+<h2>5 · Operational insights the sim surfaced</h2>
+<ul>
+<li><b>Freshness beats quantity.</b> Against a relocating enemy with "keep-all" memory, flying <i>more</i> sorties <i>lowers</i> accuracy (45%→24% operators from 2→8 flights) as stale recordings pile up; fading old data recovers it (→50%), and the confidently-wrong rate drops 22%→1% (E16/E17).</li>
+<li><b>Graceful, honest degradation.</b> As the enemy relocates more (0→70%/flight) operator hit-rate falls 65%→38% but the located count holds and the 95% ellipse stays calibrated — the system widens uncertainty instead of going overconfident (E18).</li>
+<li><b>Flight plan.</b> Multi-angle &gt; grid &gt; parallel &gt; single pass (operators 53% vs 43%) — crossing headings still resolve the bearing mirror even with the full payload (E19).</li>
+<li><b>Receiver is decisive.</b> Even with every countermeasure on, the fused dual-receiver beats bladeRF-alone by +24 pp operators; the array alone underperforms on band coverage (E20).</li>
+<li><b>Robust to clutter.</b> Light/typical/heavy background spectrum (80/150/300 emitters) give identical accuracy — the 5-stage filter + deinterleaver cut through density (E11).</li>
+</ul>
+
+<h2 class="pb">6 · All 30 experiments (20,562 campaigns)</h2>
+<p class="note">Every experiment is paired — all variants fly the same maps and altitudes. Full tables in <code>docs/RESULTS.md</code>.</p>
+<table>
+<tr><th>ID</th><th>Study</th><th>Headline result</th></tr>
+<tr><td>E00</td><td>Baseline (v1, before changes)</td><td>reference: bladeRF combined/grid</td></tr>
+<tr><td>E01</td><td>Baseline + merged jammer model</td><td>reference for v1.2</td></tr>
+<tr><td>E02</td><td>RF front end (filter / LNA)</td><td>false fixes 13→0 (filter); LNA alone 18; filter→LNA best, order matters</td></tr>
+<tr><td>E03</td><td>Countermeasures (null/excision/cyclo)</td><td>cyclostationary dominates: operators located 56%→73%</td></tr>
+<tr><td>E04</td><td>Two-channel null limit</td><td>3 jammers: 2-ch 18% vs fused 38% operators</td></tr>
+<tr><td>E05</td><td>Headline bare vs equipped</td><td>operators ≤500 m 22%→51%</td></tr>
+<tr><td>E06</td><td>Modern battlefield (fibre/lowrate/decoy)</td><td>operators 8%→41% (5×); decoys irreducible</td></tr>
+<tr><td>E07</td><td>Headline validation, 100 maps</td><td>+27.3 pp operators [24.1, 30.7]</td></tr>
+<tr><td>E08</td><td>Countermeasure ablation (modern)</td><td>cyclostationary carries it (operators 40%→59%)</td></tr>
+<tr><td>E09</td><td>Jammer waveforms vs excision</td><td>excision helps swept/pulsed, zero vs barrage</td></tr>
+<tr><td>E10</td><td>Modern headline, 100 maps</td><td>operators 9%→37% [+24.5,+29.7]</td></tr>
+<tr><td>E11</td><td>Density robustness</td><td>flat across 80/150/300 clutter</td></tr>
+<tr><td>E12</td><td>SEI vs retuning</td><td>operators located 85%→96%</td></tr>
+<tr><td>E13</td><td>GNSS spoofing</td><td>actionable 69%→14%, located unchanged</td></tr>
+<tr><td>E14</td><td>Accuracy ladder (clean)</td><td>operators 20%→49%, located 56%→96%</td></tr>
+<tr><td>E15</td><td>Accuracy ladder (modern)</td><td>operators 9%→40%, each lever pays off</td></tr>
+<tr><td>E16</td><td>Flights sweep</td><td>more flights HURT under keep-all memory</td></tr>
+<tr><td>E17</td><td>Memory-fading remedy</td><td>fade/last recover: operators 24%→42%→50%</td></tr>
+<tr><td>E18</td><td>Enemy-mobility sweep</td><td>graceful: 65%→38%, calibration holds</td></tr>
+<tr><td>E19</td><td>Best flight plan</td><td>multi-angle best (53% vs 43% single)</td></tr>
+<tr><td>E20</td><td>Receiver with full stack</td><td>fused +24 pp over bladeRF-alone</td></tr>
+<tr><td>E21</td><td>Multi-jammer, full stack</td><td>fused flat across 1/2/3 jammers</td></tr>
+<tr><td>E22</td><td>Definitive modern headline (high N)</td><td>operators 10%→47% [+35.1,+39.7]</td></tr>
+<tr><td>E23</td><td>Definitive clean headline (high N)</td><td>operators 21%→68% [+43.5,+49.5]</td></tr>
+<tr><td>E24</td><td>Ladder, best ops settings</td><td>operators 10%→51%</td></tr>
+<tr><td>E25</td><td>Front end (high N, 1,800)</td><td>filter 0 false fixes; filter→LNA +5.5 pp located</td></tr>
+<tr><td>E26</td><td>Countermeasures (high N)</td><td>all+SEI +10.7 pp located [+9.5,+11.9]</td></tr>
+<tr><td>E27</td><td>Ladder clean (high N)</td><td>fused +15.0 pp hit [+13.3,+16.9]</td></tr>
+<tr><td>E28</td><td>GNSS spoofing (high N)</td><td>−49.5 pp hit, located −0.6 (confidently wrong)</td></tr>
+<tr><td>E29</td><td>Ladder modern (high N)</td><td>fused +16.6 pp hit [+15.1,+18.0]</td></tr>
+</table>
+
+<h2>7 · Documentation, versioning &amp; reproducibility</h2>
+<ul>
+<li><b>Every version is a git commit</b> (rollback points): v1.0 project as handed over → v1.1 batch runner → v1.2 jammer model → v1.3 front end + countermeasures → v1.4 SEI → v1.5 GNSS spoofing. Full accuracy-per-version table in <code>docs/CHANGELOG.md</code>. <span class="note">(Tag refs are blocked by this session's GitHub scope, so rollback is by commit SHA, documented in the changelog.)</span></li>
+<li><b>Headless batch runner</b> (<code>sim/engine.js</code> + <code>sim/batch.js</code>): runs the model from <code>heatmap.html</code> in Node on worker threads, paired A/B/C, bootstrap CIs. Reproduce any row: <code>node sim/batch.js sim/experiments/&lt;name&gt;.json</code>.</li>
+<li><b>Docs:</b> <code>docs/SUMMARY.md</code> (judge one-pager), <code>docs/RESULTS.md</code> (all 30 tables + index), <code>docs/research.md</code> (sourced real-world parameters), <code>docs/CHANGELOG.md</code>.</li>
+<li><b>In-app:</b> every feature is a UI control with live notes, plus one-click "Equip recommended" / "Strip to bare" presets. Published artifact republished through Version 12; browser-smoke-tested (0 JS errors).</li>
+</ul>
+
+<h2>8 · Honest limits (shown on purpose)</h2>
+<ul>
+<li>All numbers are <b>modelled</b>, calibrated to published hardware/EW figures (<code>docs/research.md</code>) — not a bench test of this payload. They show the right direction and rough magnitude of each effect.</li>
+<li>Fibre-optic FPV are unlocatable (hard ceiling); decoys are false fixes nothing removes; GNSS spoofing needs anti-spoof/inertial navigation (out of this payload's scope).</li>
+<li>Nulling assumes the two channels can be phase-calibrated on a vibrating airframe — the hard part a real build must still prove.</li>
+<li>Still unmodelled: a field-validated hop fingerprint, 3D geolocation, mutual coupling, weather, and aircraft endurance/survivability.</li>
+</ul>
+
+<div class="foot">Generated 2026-10-11 · Drone-Recoinnessance · branch claude/sleepy-ride-whzlrx · 20,562 modelled simulations across 30 paired experiments · not real RF data.</div>
+</body></html>
