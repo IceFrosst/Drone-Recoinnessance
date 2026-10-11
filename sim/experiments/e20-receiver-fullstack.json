@@ -1,0 +1,13 @@
+{
+  "name": "e20-receiver-fullstack",
+  "title": "E20 · Receiver choice once everything else is optimized",
+  "description": "With the full stack on (filter→LNA + nulling + excision + cyclostationary + SEI, memory=fade, multi-angle) on the modern threat world, how much does the receiver still matter? bladeRF 2-ch vs coherent array 5-ch vs fused. 40 maps × 3 altitudes.",
+  "nSeeds": 40,
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 },
+  "base": { "method": "both", "plan": "multi", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true, "memory": "fade" },
+  "variants": [
+    { "label": "A", "name": "bladeRF 2-ch", "cfg": { "rx": "bladerf" } },
+    { "label": "B", "name": "coherent array 5-ch", "cfg": { "rx": "array" } },
+    { "label": "C", "name": "fused (bladeRF+Kraken)", "cfg": { "rx": "fused" } }
+  ]
+}
