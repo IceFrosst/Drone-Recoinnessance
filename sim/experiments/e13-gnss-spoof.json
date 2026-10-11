@@ -1,0 +1,11 @@
+{
+  "name": "e13-gnss-spoof",
+  "title": "E13 · GNSS spoofing — the confidently-wrong failure",
+  "description": "A spoofer induces a coherent false position (not random drift), so fixes taken in the belt are displaced with full confidence. Fused payload, everything on, 40 maps × 3 altitudes. A clean GNSS, B spoofed. Watch the ≤500 m hit rate collapse while the located count and 95%-ellipse calibration barely move — a tight ellipse is no defence against spoofing.",
+  "nSeeds": 40,
+  "base": { "method": "both", "plan": "grid", "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true },
+  "variants": [
+    { "label": "A", "name": "clean GNSS", "cfg": { "spoof": false } },
+    { "label": "B", "name": "GNSS spoofed", "cfg": { "spoof": true } }
+  ]
+}

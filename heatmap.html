@@ -470,6 +470,7 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
           </div>
           <div class="toggles">
             <label><input type="checkbox" id="realism"> Frontline RF</label>
+            <label><input type="checkbox" id="spoof"> GNSS spoofing</label>
             <label><input type="checkbox" id="truth"> Ground truth</label>
             <label><input type="checkbox" id="showSpectrum"> Background spectrum</label>
             <label><input type="checkbox" id="showPaths"> Flight paths</label>
@@ -614,6 +615,12 @@ const NAV_DRIFT_MS = 0.6;           // GNSS-denied navigation drift, m/s
 const NAV_GNSS_SIG_M = 5;           // own-position error with GNSS
 const GNSS_BELT_WEST = 3000;        // GNSS-denial belt starts this far behind our own line
 const GNSS_BELT_RAMP = 14000;       // drift reaches full rate this far east of that edge
+// GNSS SPOOFING (distinct from the denial/drift above). A spoofer broadcasts fake satellite signals, so the
+// receiver computes a WRONG position with full confidence — not a random walk but a coherent offset shared by
+// every recording in the belt. The danger: the fix stays TIGHT (the drone trusts its position) but is
+// systematically displaced — a confidently-wrong fix. No RF front-end or DSP countermeasure here touches it;
+// the real fix is inertial / multi-constellation / anti-spoof GNSS, which this payload does not model.
+const SPOOF_BIAS_M = 1400;          // coherent position offset the spoofer induces at full belt depth, m
 
 // Frontline degradation (the "Realistic RF" toggle). Effects a real sector adds that a
 // clean illustration omits. Attitude error is folded into the reported bearing sigma so the
@@ -2015,6 +2022,7 @@ function flyFlight(W, cfg, ctx, k, plan) {
   const pcfg = { bands: rxt.array ? bandsFor(ARRAY.ceil) : brfBands(), selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW };
   let px = L.x, py = L.y, wi = 0, goal = route.wps[0], hdg = azOf(goal.x - px, goal.y - py), homing = false;
   let dx = 0, dy = 0, dvx = 0, dvy = 0, gnssIn = false, commsIn = null, navSig = NAV_GNSS_SIG_M, crossedE = false, wasOver = false;
+  const spoofDir = dirOf(makeRng(W.seed + '|spoof|' + k)() * 360);   // coherent spoof offset direction this flight
   const path = { t: [], x: [], y: [], h: [], nx: [], ny: [] }, events = [];
   const say = (t, text, kind = 'info') => events.push({ t, text, kind });
   const cover = new Float32Array(GCN), naive = new Float32Array(GCN).fill(-99), snaps = [];
@@ -2106,11 +2114,15 @@ function flyFlight(W, cfg, ctx, k, plan) {
     const azOfJam = J => azOf(J.x - px, J.y - py);
     congest = 0;
     if (cfg.realism) { let strong = 0; for (const q of E) if ((q.type === 'jam' || q.type === 'ctrl') && txOn(W, q, t, k)) strong++; congest = CONGEST_DB * clamp(strong / 4, 0, 1); }
-    if (inGnss && !gnssIn) { gnssIn = true; const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; say(t, 'Entered the GNSS-denial belt. Positions stamped on the recordings now come from dead-reckoning and drift.', 'alert'); }
-    else if (!inGnss && gnssIn) { say(t, `Clear of the GNSS belt. Position had drifted ${fmtM(Math.hypot(dx, dy))}.`); gnssIn = false; dx = dy = 0; }
+    if (inGnss && !gnssIn) { gnssIn = true; const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; say(t, cfg.spoof ? 'Entered a GNSS-SPOOFED belt. The receiver reports a confident position that is quietly wrong; recordings here are stamped with it.' : 'Entered the GNSS-denial belt. Positions stamped on the recordings now come from dead-reckoning and drift.', 'alert'); }
+    else if (!inGnss && gnssIn) { say(t, `Clear of the GNSS belt. Position was off by ${fmtM(Math.hypot(dx, dy))}.`); gnssIn = false; dx = dy = 0; }
     if (jam && !commsIn) { commsIn = jam; say(t, `Inside ${jam.id}'s jamming bubble: receiver desensitised, fewer bursts recorded here.`, 'alert'); }
     else if (!jam && commsIn) commsIn = null;
-    if (inGnss) { if (Math.floor(t / 150) !== Math.floor((t - STEP_S) / 150)) { const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; } dx += dvx * gnssDepth * STEP_S; dy += dvy * gnssDepth * STEP_S; navSig = NAV_GNSS_SIG_M + Math.hypot(dx, dy); } else navSig = NAV_GNSS_SIG_M;
+    if (inGnss && cfg.spoof) {
+      // Coherent spoof offset (fixed direction this flight), and the receiver still believes it is accurate —
+      // so navSig stays small and the resulting fix is tight but systematically displaced.
+      dx = spoofDir[0] * SPOOF_BIAS_M * gnssDepth; dy = spoofDir[1] * SPOOF_BIAS_M * gnssDepth; navSig = NAV_GNSS_SIG_M;
+    } else if (inGnss) { if (Math.floor(t / 150) !== Math.floor((t - STEP_S) / 150)) { const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; } dx += dvx * gnssDepth * STEP_S; dy += dvy * gnssDepth * STEP_S; navSig = NAV_GNSS_SIG_M + Math.hypot(dx, dy); } else navSig = NAV_GNSS_SIG_M;
     const nX = px + dx, nY = py + dy;                         // the recorded (believed) position, drift included
     if (!crossedE && px > fr.e) { crossedE = true; say(t, 'Crossed the enemy forward line. Over hostile ground.'); }
     const d = dirOf(hdg);                                     // nose direction, the cone axis
@@ -2698,7 +2710,7 @@ const state = {
   seed: 'ALPHA1', tab: 0, rx: 'bladerf', method: 'both', plan: 'grid', planning: 'fixed', altM: 2000, nFlights: 4,
   memory: 'all', omni: false, moveP: 35, density: 150, realism: true, truth: true,
   frontEnd: 'none', nulling: false, excision: false, cyclo: false, sei: false,   // RF front end + countermeasures
-  fiberFrac: 0, loraFrac: 0, decoys: 0,                              // real-world threat mix (regenerates the world)
+  fiberFrac: 0, loraFrac: 0, decoys: 0, spoof: false,                // real-world threat mix (regenerates the world); spoof is a toggle
   showPaths: true, showCover: false, showNaive: false, showGhost: true, showSpectrum: true,
   playing: !REDUCED, speed: 160, t: 0, hover: -1, pin: -1, follow: false,
   classified: true,                        // colour the heat + fixes by target type (off = one undifferentiated heat)
@@ -2714,7 +2726,7 @@ function cfg() {
   return { refl: true, realism: state.realism, attDeg: ATT_ERR_DEG, noise: 2, beam: BEAM_WIDTH_DEG,
     density: state.density, margin: 4, convTolM: 4000, moveP: state.moveP / 100, nFlights: state.nFlights,
     rx: state.rx, method: state.method, plan: state.plan, planning: state.planning, memory: state.memory, omni: state.omni, altM: state.altM,
-    frontEnd: state.frontEnd, nulling: state.nulling, excision: state.excision, cyclo: state.cyclo, sei: state.sei };
+    frontEnd: state.frontEnd, nulling: state.nulling, excision: state.excision, cyclo: state.cyclo, sei: state.sei, spoof: state.spoof };
 }
 function worldOpts() { return { c2: 2, relay: 2, fiberFrac: state.fiberFrac, loraFrac: state.loraFrac, decoys: state.decoys }; }
 function buildTimeline() {
@@ -3171,7 +3183,7 @@ function syncControls() {
   $('movePVal').textContent = state.moveP + '%';
   $('densityVal').textContent = state.density + ' emitters';
   $('moveP').value = state.moveP; $('density').value = state.density;
-  $('realism').checked = state.realism; $('truth').checked = state.truth; $('showSpectrum').checked = state.showSpectrum; $('showPaths').checked = state.showPaths; $('showCover').checked = state.showCover; $('showNaive').checked = state.showNaive; $('showGhost').checked = state.showGhost;
+  $('realism').checked = state.realism; $('spoof').checked = state.spoof; $('truth').checked = state.truth; $('showSpectrum').checked = state.showSpectrum; $('showPaths').checked = state.showPaths; $('showCover').checked = state.showCover; $('showNaive').checked = state.showNaive; $('showGhost').checked = state.showGhost;
   $('realNote').textContent = state.realism ? 'On: multipath fading, attitude error, airframe shadowing, GNSS drift, confuser links, and between-flight retuning.' : 'Off: clean illustration.';
   document.querySelectorAll('.tabs button').forEach((b, i) => b.setAttribute('aria-selected', String(i === state.tab)));
   document.querySelectorAll('#speed button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === state.speed)));
@@ -3244,6 +3256,7 @@ $('nFlights').addEventListener('input', e => { state.nFlights = +e.target.value;
 $('moveP').addEventListener('input', e => { state.moveP = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuild(true); afterChange(); }, 180); });
 $('density').addEventListener('input', e => { state.density = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuild(true); afterChange(); }, 180); });
 $('realism').addEventListener('change', e => { state.realism = e.target.checked; cmpOldSim = null; rebuild(true); afterChange(); });
+$('spoof').addEventListener('change', e => { state.spoof = e.target.checked; cmpOldSim = null; rebuild(true); afterChange(); });
 ['truth', 'showSpectrum', 'showPaths', 'showCover', 'showNaive', 'showGhost'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; }));
 ['nulling', 'excision', 'cyclo', 'sei'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; rebuild(true); afterChange(); }));
 $('fiberFrac').addEventListener('input', e => { state.fiberFrac = +e.target.value / 100; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(); afterChange(); }, 220); });
