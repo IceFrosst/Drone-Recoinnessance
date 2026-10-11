@@ -1,0 +1,14 @@
+{
+  "name": "e06-modern-battlefield",
+  "title": "E06 · Modern battlefield — fibre FPV, low-rate links, decoys",
+  "description": "The 2024-26 picture: ~30% of FPV operators on fibre (no RF), ~30% on long-range low-rate spread links (below an energy detector), and 2 decoy emitters per map. bladeRF · combined · crossing grid, Frontline RF on. A bare payload, B adds a filter→LNA front end, C adds the three DSP countermeasures, D is the fused payload with everything. Shows what the new tech costs (fibre ceiling, decoy false fixes) and what the countermeasures buy back (low-rate links via cyclostationary).",
+  "nSeeds": 24,
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 },
+  "base": { "method": "both", "plan": "grid" },
+  "variants": [
+    { "label": "A", "name": "bare bladeRF", "cfg": { "frontEnd": "none" } },
+    { "label": "B", "name": "+ filter→LNA", "cfg": { "frontEnd": "filterlna" } },
+    { "label": "C", "name": "+ nulling+excision+cyclo", "cfg": { "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true } },
+    { "label": "D", "name": "fused, everything on", "cfg": { "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true } }
+  ]
+}

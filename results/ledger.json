@@ -1,5 +1,5 @@
 {
- "total": 1524,
+ "total": 1812,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -36,6 +36,12 @@
    "campaigns": 288,
    "when": "2026-10-11T00:48:56.692Z",
    "seconds": 214
+  },
+  {
+   "name": "e06-modern-battlefield",
+   "campaigns": 288,
+   "when": "2026-10-11T01:00:43.534Z",
+   "seconds": 260
   }
  ]
 }

@@ -1,7 +1,6 @@
 # Experiment results
 
-Auto-generated from `results/*.md`. Total campaigns run: **1524** (ledger in `results/ledger.json`). Every table is paired — all variants fly the same maps and altitudes. Modelled, not field data.
-
+Auto-generated from `results/*.md` by `sim/makedocs.js`. Total campaigns run across all experiments: **1,812** (ledger: `results/ledger.json`). Every table is paired — all variants fly the same maps and altitudes. All numbers are modelled, not field data.
 
 ### E00 · Baseline (v1 model, before any change)
 
@@ -25,6 +24,7 @@ Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
 | C | +1.6 [-3.7, +7.1] | -3.9 [-7.6, -0.6] | +0.0 [-9.1, +7.9] |
 | D | -5.9 [-9.5, -2.3] | -2.9 [-5.6, -0.3] | +3.2 [-4.0, +10.2] |
 | E | +15.0 [+10.7, +19.4] | +4.2 [+1.3, +7.3] | +19.0 [+11.9, +27.1] |
+
 
 ---
 
@@ -53,6 +53,7 @@ Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
 | E | +9.8 [+4.5, +15.0] | +4.2 [+1.3, +7.4] | +15.9 [+7.1, +24.0] |
 | F | -2.6 [-8.1, +2.3] | +0.0 [-1.9, +1.9] | -4.0 [-10.7, +1.7] |
 
+
 ---
 
 ### E02 · RF front end — does a preselect filter / LNA help, and does an LNA cost us?
@@ -77,6 +78,7 @@ Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
 | C | -1.2 [-3.8, +1.4] | -0.4 [-2.6, +1.6] | -0.5 [-5.4, +4.4] |
 | D | +2.6 [-0.4, +5.8] | +4.4 [+2.4, +6.3] | +4.9 [+0.0, +10.6] |
 | E | +0.8 [-2.2, +3.6] | +2.4 [+0.0, +4.9] | +3.4 [-1.0, +8.3] |
+
 
 ---
 
@@ -103,6 +105,7 @@ Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
 | D | +2.6 [+0.0, +5.3] | +5.8 [+3.0, +8.3] | +3.9 [-0.5, +8.4] |
 | E | +1.6 [-1.2, +4.4] | +4.2 [+1.6, +6.7] | +0.5 [-4.9, +5.7] |
 
+
 ---
 
 ### E04 · The two-channel null limit — one jammer vs two
@@ -126,6 +129,7 @@ Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
 | C | -6.5 [-11.0, -2.3] | -7.8 [-11.5, -4.3] | +0.4 [-5.5, +5.2] |
 | D | +15.2 [+11.0, +19.8] | +8.6 [+5.8, +11.7] | +17.9 [+11.6, +24.6] |
 
+
 ---
 
 ### E05 · Headline — the payload as handed over vs fully equipped
@@ -148,5 +152,30 @@ Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
 | B | +2.6 [-0.2, +5.7] | +4.6 [+2.8, +6.7] | +4.9 [+0.4, +9.6] |
 | C | +2.6 [-0.5, +5.4] | +9.6 [+7.0, +12.3] | +7.7 [+2.9, +13.0] |
 | D | +16.5 [+13.7, +19.4] | +12.4 [+9.3, +15.7] | +29.3 [+23.5, +34.9] |
+
+
+---
+
+### E06 · Modern battlefield — fibre FPV, low-rate links, decoys
+
+The 2024-26 picture: ~30% of FPV operators on fibre (no RF), ~30% on long-range low-rate spread links (below an energy detector), and 2 decoy emitters per map. bladeRF · combined · crossing grid, Frontline RF on. A bare payload, B adds a filter→LNA front end, C adds the three DSP countermeasures, D is the fused payload with everything. Shows what the new tech costs (fibre ceiling, decoy false fixes) and what the countermeasures buy back (low-rate links via cyclostationary).
+
+288 campaigns (4 variants × 24 maps × 3 altitudes), 260 s on 4 cores. Paired: every variant flies the same maps.
+
+| Variant | Hit ≤500 m (all HVT) | Located | Median err | Inside 95% | Wrong (>1.5 km) | Operators hit | Operators located | Jammers hit | False/decoy fixes |
+|---|---|---|---|---|---|---|---|---|---|
+| **A** · bare bladeRF | 45% (341/759) | 58% | 247 m | 93% | 8% | 8% (26/327) | 27% | 72% | 328 |
+| **B** · + filter→LNA | 47% (354/759) | 64% | 279 m | 91% | 10% | 14% (46/327) | 40% | 73% | 288 |
+| **C** · + nulling+excision+cyclo | 54% (410/759) | 72% | 269 m | 90% | 10% | 24% (80/327) | 59% | 73% | 288 |
+| **D** · fused, everything on | 63% (475/759) | 75% | 203 m | 92% | 9% | 41% (135/327) | 65% | 73% | 288 |
+
+Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
+
+| Variant | Δ hit rate, all HVT | Δ located, all HVT | Δ hit rate, operators |
+|---|---|---|---|
+| B | +1.7 [-0.5, +3.8] | +5.8 [+4.2, +7.4] | +6.1 [+3.4, +8.9] |
+| C | +9.1 [+6.1, +11.9] | +13.6 [+11.6, +15.4] | +16.5 [+11.8, +21.2] |
+| D | +17.7 [+14.4, +21.0] | +16.9 [+15.1, +18.6] | +33.3 [+28.3, +39.2] |
+
 
 ---
