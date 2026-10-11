@@ -1,5 +1,7 @@
 # Changelog & accuracy over versions
 
+> **Session close (2026-10-11 05:57 UTC).** Overnight autonomous run complete: ~6.3 h, **20,562 modelled simulations across 30 paired A/B/C experiments**, six versioned releases (v1.0→v1.5), artifact republished to Version 12. Full write-up: `docs/Drone-RF-Recon-Report.pdf`. Headline: fully-equipped payload vs the bare starting payload lifts operator fixes within 500 m from 21%→68% (clean) / 10%→47% (modern), front-end false fixes eliminated.
+
 Every version is a git commit (and a local tag) so a bad change can be rolled back: `git checkout <sha> -- heatmap.html`. (This session's GitHub integration can push branch refs but not tag refs, so the tags live locally; the commit SHAs below are the reliable rollback handles.) All numbers are **modelled**, not field results, and come from the headless batch runner (`sim/batch.js`) over many maps × altitudes with Frontline RF on. Each meaningful change ships with an A/B/C experiment in `sim/experiments/` and a results table in `results/`.
 
 | Version | Commit | What |
