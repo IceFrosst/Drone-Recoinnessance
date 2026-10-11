@@ -892,8 +892,16 @@ function genWorld(seed, nEmit, opts) {
     e.fp = { hop: true, hopRate: R.range(150, 500), burstMs: R.range(1, 6), burstBW: R.range(0.5, 2) };
     e.hopSpan = e.band === '2.4 GHz' ? 60 : e.band === '1.3 GHz' ? 25 : 7;   // real ELRS hops across its whole band
     e.pclass = 'target';
-    e.sig = sub === 'fpv' ? `${e.band} · frequency hopping · steady packet cadence` : `${e.band} · hopping command uplink · continuous`;
-    e.subName = sub === 'fpv' ? 'FPV strike operator' : 'Recon UAS ground station';
+    // Real-world population (2024-26): a share of FPV operators fly FIBRE-OPTIC drones — no RF control link
+    // at all, so this passive method can never locate them (a hard ceiling, not a model failure). Another
+    // share run very-low-rate spread-spectrum links (ELRS SF12 / long-range LoRa, ~−120 dBm) that sit below
+    // an energy detector's floor and are only caught by the cyclostationary (feature) detector.
+    e.fiber = (sub === 'fpv' && R() < (opts.fiberFrac || 0));
+    e.lowRate = (!e.fiber && R() < (opts.loraFrac || 0));
+    e.sig = e.fiber ? `${e.band} control radio OFF · fibre-optic drone (no RF to intercept)`
+      : e.lowRate ? `${e.band} · long-range low-rate spread spectrum · below the noise floor`
+      : sub === 'fpv' ? `${e.band} · frequency hopping · steady packet cadence` : `${e.band} · hopping command uplink · continuous`;
+    e.subName = (e.fiber ? 'Fibre-optic FPV operator' : sub === 'fpv' ? 'FPV strike operator' : 'Recon UAS ground station');
     if (sub === 'fpv') {
       e.sorties = [];
       let t = -R.range(0, 600);
@@ -947,10 +955,24 @@ function genWorld(seed, nEmit, opts) {
     const f = R.pick([460, 735, 820, 1265]);
     ems.push({ type: 'relay', x: p.x, y: p.y, idx: ems.length, fMHz: f, fp: { hop: false, burstBW: R.range(0.1, 0.5), cont: true, duplex: true }, pclass: 'target', sig: `${f} MHz · duplex repeater · continuous carrier` });
   }
+  // --- decoy emitters (enemy EW deception): a cheap transmitter that mimics a control-link signature and
+  //     sits where no operator is, to draw fire and inflate the picture. It passes the same signature gate,
+  //     so the sorter locates it as a (false) operator — a false positive no amount of DF can remove,
+  //     because the decoy really is transmitting. Opt-in via opts.decoys.
+  const nDecoy = opts.decoys || 0;
+  for (let i = 0; i < nDecoy; i++) {
+    const p = place(1500, 9000);
+    const band = R.pick(['915 MHz', '868 MHz', '2.4 GHz', '1.3 GHz']);
+    ems.push({ type: 'ctrl', sub: 'fpv', decoy: true, x: p.x, y: p.y, idx: ems.length, band, fMHz: bandMHz(band),
+      fp: { hop: true, hopRate: R.range(150, 500), burstMs: R.range(1, 6), burstBW: R.range(0.5, 2) }, hopSpan: band === '2.4 GHz' ? 60 : band === '1.3 GHz' ? 25 : 7,
+      pclass: 'target', sig: `${band} · control-link DECOY (no drone)`, subName: 'Decoy emitter',
+      sorties: [{ t0: -1e9, t1: 1e9, tx: p.x, ty: p.y, out: 1, bend: 0, nx: 0, ny: 0, lcx: p.x, lcy: p.y, lr: 1, a0: 0, w: 0 }] });   // always "on" so it is heard
+  }
   const counters = { ctrl: 0, jam: 0, radio: 0, c2: 0, relay: 0 }, prefix = { ctrl: 'C', jam: 'J', radio: 'R', c2: 'K', relay: 'L' };
-  for (const e of ems) { e.id = prefix[e.type] + (++counters[e.type]); e.z = hAt(e.x, e.y) + 4; }
-  // each controller's drone carries a video downlink: an airborne emitter
-  for (const c of ems.filter(e => e.type === 'ctrl')) {
+  for (const e of ems) { e.id = (e.decoy ? 'D' : prefix[e.type]) + (++counters[e.type]); e.z = hAt(e.x, e.y) + 4; }
+  // each controller's drone carries a video downlink: an airborne emitter. Fibre-optic FPV and decoys have
+  // no drone transmitting RF, so they carry no video link.
+  for (const c of ems.filter(e => e.type === 'ctrl' && !e.fiber && !e.decoy)) {
     const band = c.sub === 'fpv' ? R.pick(['5.8 GHz', '1.2 GHz', '2.2 GHz']) : '2.2 GHz';
     ems.push({ type: 'video', parent: c, idx: ems.length, id: 'U' + c.id.slice(1), agl: c.sub === 'fpv' ? FPV_AGL_M : ISR_AGL_M, fMHz: bandMHz(band), fp: { hop: false, burstBW: R.range(8, 20), cont: true }, pclass: 'ordinary', sig: `${band} · ${band.startsWith('5') ? 'analog' : 'digital'} video carrier · 8–20 MHz wide` });
   }
@@ -1035,6 +1057,7 @@ function uavPos(c, t) {
   return { x: c.x, y: c.y, on: false };
 }
 function txAt(W, e, t) {
+  if (e.fiber) return false;                          // fibre-optic drone: no RF control link to intercept
   if (e.type === 'ctrl') return uavPos(e, t).on;
   if (e.type === 'video') return uavPos(e.parent, t).on;
   if (e.type === 'jam') return true;
@@ -1745,6 +1768,13 @@ const EXCISION_EFF = 0.8;           // fraction of the recoverable (non-barrage)
 // It only helps signatures in the library (matched), and needs several cycles to integrate (latency).
 const CYCLO_GAIN_HOP_DB = 6;        // detection-threshold reduction for hopping control links (strong cyclic feature)
 const CYCLO_GAIN_CONT_DB = 3;       // ... weaker gain for continuous structured carriers (C2 / relay frame cadence)
+const CYCLO_GAIN_LOWRATE_DB = 5;    // ... extra gain on long-range low-rate spread links (the whole point of a cyclic detector)
+
+// Real-world population realism (2024-26 Ukraine picture; shares are opts on genWorld, see docs/research.md):
+//  • fibre-optic FPV — no RF control link at all (Russia 30-50 %, Ukraine ~15 % of FPV). A hard ceiling.
+//  • long-range low-rate spread links (ELRS SF12 / LoRa, ~−120 dBm) — buried below an energy detector.
+//  • decoy emitters — mimic a control-link signature to draw false fixes.
+const LORA_SNR_PENALTY = 10;        // how far a low-rate spread link sits below a normal control link, dB
 
 // Which jammers are in range right now and how deep, so one null can be steered at the strongest and a
 // second jammer (which a 2-ch null cannot also cover) is accounted for separately. Returns the list sorted
@@ -1877,7 +1907,7 @@ function makeEpochs(W, cfg, nF) {
     epochs.push(epochs[k - 1].map(p => {
       const e = p.src; let x = p.x, y = p.y, moved = 0, gen = p.gen, retuned = false;
       const rMove = R(), rRet = R(), rA = R(), rD = R();
-      if (e.type !== 'jam' && e.type !== 'c2' && e.type !== 'relay' && rMove < cfg.moveP) {
+      if (e.type !== 'jam' && e.type !== 'c2' && e.type !== 'relay' && !e.decoy && rMove < cfg.moveP) {
         const R2 = makeRng(W.seed + '|move|' + k + '|' + e.idx);
         for (let tries = 0; tries < 80; tries++) {
           const d = lerp(MOVE_MIN_M, MOVE_MAX_M, tries ? R2() : rD), a = 2 * Math.PI * (tries ? R2() : rA);
@@ -1888,7 +1918,7 @@ function makeEpochs(W, cfg, nF) {
           x = nx; y = ny; moved = Math.hypot(nx - p.x, ny - p.y); break;
         }
       }
-      if (cfg.realism && e.type === 'ctrl' && rRet < RETUNE_P) { gen++; retuned = true; }
+      if (cfg.realism && e.type === 'ctrl' && !e.decoy && rRet < RETUNE_P) { gen++; retuned = true; }
       const q = Object.assign({}, p, { x, y, z: terrainAt(W, x, y) + 4, gen, moved, retuned, fromX: p.x, fromY: p.y, hr: (e.fp.hopRate || 0) * RETUNE_HR[gen % RETUNE_HR.length] });
       if (e.type === 'ctrl' && e.sub === 'fpv') q.sorties = makeSorties(W, q, makeRng(W.seed + '|sortie|' + k + '|' + e.idx));
       return q;
@@ -1897,6 +1927,7 @@ function makeEpochs(W, cfg, nF) {
   return epochs;
 }
 function txOn(W, q, t, k) {
+  if (q.fiber) return false;                         // fibre-optic drone: no RF control link to intercept
   if (q.type === 'ctrl') return uavPos(q, t).on;
   if (q.type === 'jam' || q.type === 'c2' || q.type === 'relay') return true;   // continuous emitters
   return hash01(W.seedNum ^ (q.idx * 7919 + Math.floor((t + k * 100000) / DWELL_S) * 104729)) < RADIO_DUTY;
@@ -2055,7 +2086,7 @@ function flyFlight(W, cfg, ctx, k, plan) {
         const hx = px - ep.x, hy = py - ep.y, horiz = Math.hypot(hx, hy), dz = altZ - ep.z, slant = Math.hypot(horiz, dz);
         const elev = Math.atan2(dz, Math.max(horiz, 1)) * R2D, azTrue = azOf(ep.x - px, ep.y - py);
         let gH = 0, gV = 0;
-        if (q.type === 'ctrl' && cfg.omni) { gH = OMNI_GAIN_DB; gV = Math.max(VERT_FLOOR_DB, -12 * ((elev - 5) / OMNI_VERT_BEAM_DEG) ** 2); }
+        if (q.type === 'ctrl' && (cfg.omni || q.decoy)) { gH = OMNI_GAIN_DB; gV = Math.max(VERT_FLOOR_DB, -12 * ((elev - 5) / OMNI_VERT_BEAM_DEG) ** 2); }   // decoys radiate omni, to be heard from everywhere
         else if (q.type === 'ctrl') { const off = Math.abs(angDiff(azOf(hx, hy), beamAzAt(q, t))); gH = hPattern(off, bw); gV = Math.max(VERT_FLOOR_DB, -12 * ((elev - 5) / VERT_BEAM_DEG) ** 2); }
         const masked = !lineOfSight(W, ep.x, ep.y, ep.z, px, py, altZ);
         let degrade = 0;
@@ -2066,7 +2097,7 @@ function flyFlight(W, cfg, ctx, k, plan) {
         const coJam = (cfg.realism && cfg.jamFx !== false && q.type !== 'jam') ? coJamOf(q.fMHz) : null;
         let desB = desens;
         if (jam && !(coJam && coJam.J.idx === jam.idx)) desB *= fe.desensOOB;   // off-band jammer rejected by a preselect
-        let snr0 = SNR_1KM_DB[q.type] - 10 * PATHLOSS_EXP * Math.log10(Math.max(slant, 100) / 1000) + gH + gV - cfg.noise - (q.type === 'jam' ? 0 : desB) + degrade + fe.sens;
+        let snr0 = SNR_1KM_DB[q.type] - 10 * PATHLOSS_EXP * Math.log10(Math.max(slant, 100) / 1000) + gH + gV - cfg.noise - (q.type === 'jam' ? 0 : desB) + degrade + fe.sens - (q.lowRate ? LORA_SNR_PENALTY : 0);
         // Collateral of a steered null: it is a direction, so a wanted signal sitting within the null's width
         // of a nulled jammer's bearing loses gain too (the 2-element null is broad; the 5-channel null narrow).
         if (nulledIdx.size && q.type !== 'jam') for (const z of jlist) if (nulledIdx.has(z.J.idx)) { const off = Math.abs(angDiff(azTrue, azOfJam(z.J))); if (off < nullWidthDeg) snr0 -= NULL_NOTCH_DB * (1 - off / nullWidthDeg); }
@@ -2074,7 +2105,7 @@ function flyFlight(W, cfg, ctx, k, plan) {
         // Cyclostationary (feature) detection digs below the noise floor for signatures with a cyclic feature
         // (hop/packet cadence) — so the effective detection threshold drops for matched emitters only.
         let cycloGain = 0;
-        if (cfg.cyclo && coherentRx) cycloGain = (q.type === 'ctrl' && q.fp && q.fp.hop) ? CYCLO_GAIN_HOP_DB : (q.type === 'c2' || q.type === 'relay') ? CYCLO_GAIN_CONT_DB : 0;
+        if (cfg.cyclo && coherentRx) cycloGain = (q.type === 'ctrl' && q.fp && q.fp.hop) ? (CYCLO_GAIN_HOP_DB + (q.lowRate ? CYCLO_GAIN_LOWRATE_DB : 0)) : (q.type === 'c2' || q.type === 'relay') ? CYCLO_GAIN_CONT_DB : 0;
         const detSnr = DETECT_SNR_DB - cycloGain, marginEff = cfg.margin - cycloGain;
         // (b) Band blackout: a co-band jammer buries signals sharing its band, beyond the general desense.
         // Nulling (if that jammer is the nulled one) and time/frequency excision (if its waveform leaves gaps)
@@ -2442,6 +2473,15 @@ function runCampaign(W, cfg) {
         continue;
       }
       const q = ctx.epochs[k][tr.idx];
+      if (q.decoy) {
+        // A decoy really transmits a control-link signature, so it passes every gate and the sorter locates it
+        // — a false target no direction-finding can remove. Counts as a false fix, never as a located operator.
+        const enoughGeom = sol.nHdg >= 2 && sol.nPos >= 3;
+        const falsePos = tr.pstage === 5 && enoughGeom && sol.mainMass >= MAIN_MASS_OK && !sol.ghost && sol.el.a <= cfg.convTolM;
+        report.push({ id: tr.id, idx: tr.idx, type: 'ctrl', decoy: true, falseTrack: true, falsePos, el: sol.el, pk: { x: sol.pkx, y: sol.pky },
+          located: false, reportable: false, ghost: sol.ghost, nB: sol.nB, mainMass: sol.mainMass, nHdg: sol.nHdg, nPos: sol.nPos, truth: null, why: 'decoy emitter (false target)' });
+        continue;
+      }
       const truth = (tr.gen === q.gen) ? { x: q.x, y: q.y } : null;    // only current-generation tracks have a live truth
       // Classification: operators go through the fingerprint posterior (confusable with other hoppers); the
       // jammer / command-post / relay signatures are distinctive, so they classify confidently once held.

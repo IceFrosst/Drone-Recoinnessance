@@ -1,6 +1,13 @@
 # Changelog & accuracy over versions
 
-Every version is a git tag so a bad change can be rolled back (`git checkout v1.2 -- heatmap.html`). All numbers are **modelled**, not field results, and come from the headless batch runner (`sim/batch.js`) over many maps × altitudes with Frontline RF on. Each meaningful change ships with an A/B/C experiment in `sim/experiments/` and a results table in `results/`.
+Every version is a git commit (and a local tag) so a bad change can be rolled back: `git checkout <sha> -- heatmap.html`. (This session's GitHub integration can push branch refs but not tag refs, so the tags live locally; the commit SHAs below are the reliable rollback handles.) All numbers are **modelled**, not field results, and come from the headless batch runner (`sim/batch.js`) over many maps × altitudes with Frontline RF on. Each meaningful change ships with an A/B/C experiment in `sim/experiments/` and a results table in `results/`.
+
+| Version | Commit | What |
+|---|---|---|
+| v1.0 | `3e3a535` | project as handed over |
+| v1.1 | `9a9f99c` | headless batch runner + likelihood speed-up (model unchanged) |
+| v1.2 | `a1ed0c6` | jammer interference model (merged) |
+| v1.3 | `031138a` | RF front end + EW countermeasures |
 
 The one headline number, from `e05-headline` (24 maps × 3 altitudes = 72 campaigns per variant, paired — every variant flies the same maps), **drone-operator fixes within 500 m**:
 
