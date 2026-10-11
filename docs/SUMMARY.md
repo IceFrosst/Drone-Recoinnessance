@@ -35,6 +35,10 @@ From `e14-accuracy-ladder` (1,080 campaigns, 60 maps × 3 altitudes, Frontline R
 
 The filter zeroes the false fixes; the LNA buys sensitivity; cyclostationary + SEI lift *located* sharply (they recover weak and retuned operators); the fused Kraken delivers the biggest jump in *actionable* fixes (it hears the whole band mirror-free). Net: operators within 500 m **20 % → 49 %**, located **56 % → 96 %**.
 
+## The definitive number (high-N, modern battlefield)
+
+From `e22-headline-highN` (720 campaigns, 120 maps × 3 altitudes, the full 2024-26 threat mix): bare bladeRF vs the fully-equipped fused payload — **drone-operator fixes within 500 m 10 % → 47 %** (nearly 5×, paired Δ +37.5 pp, 95 % CI [+35.1, +39.7]), operators located **20 % → 70 %**, all-HVT hit +23 pp. A razor-tight interval over 120 maps.
+
 ## The accuracy gain (validated over 100 maps × 3 altitudes)
 
 Bare bladeRF as the project started → fully-equipped fused payload (filter→LNA + nulling + excision + cyclostationary + the KrakenSDR second receiver):
