@@ -1,5 +1,5 @@
 {
- "total": 9852,
+ "total": 10212,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -120,6 +120,12 @@
    "campaigns": 480,
    "when": "2026-10-11T03:10:22.232Z",
    "seconds": 340
+  },
+  {
+   "name": "e20-receiver-fullstack",
+   "campaigns": 360,
+   "when": "2026-10-11T03:16:48.953Z",
+   "seconds": 286
   }
  ]
 }
