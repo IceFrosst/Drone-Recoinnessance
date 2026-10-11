@@ -434,6 +434,7 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
             <label><input type="checkbox" id="cyclo"> Cyclostationary detect</label>
             <label><input type="checkbox" id="sei"> SEI (fingerprint re-link)</label>
           </div>
+          <div class="seg wide" style="margin-top:2px"><button type="button" id="equipRec" class="btn primary" style="flex:1">Equip recommended</button><button type="button" id="equipBare" class="btn" style="flex:1">Strip to bare</button></div>
           <span class="note" id="cmNote"></span>
         </div>
       </section>
@@ -3257,6 +3258,8 @@ $('moveP').addEventListener('input', e => { state.moveP = +e.target.value; syncC
 $('density').addEventListener('input', e => { state.density = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuild(true); afterChange(); }, 180); });
 $('realism').addEventListener('change', e => { state.realism = e.target.checked; cmpOldSim = null; rebuild(true); afterChange(); });
 $('spoof').addEventListener('change', e => { state.spoof = e.target.checked; cmpOldSim = null; rebuild(true); afterChange(); });
+$('equipRec').addEventListener('click', () => { state.rx = 'fused'; state.frontEnd = 'filterlna'; state.nulling = state.excision = state.cyclo = state.sei = true; rebuild(true); syncControls(); afterChange(); });
+$('equipBare').addEventListener('click', () => { state.frontEnd = 'none'; state.nulling = state.excision = state.cyclo = state.sei = false; rebuild(true); syncControls(); afterChange(); });
 ['truth', 'showSpectrum', 'showPaths', 'showCover', 'showNaive', 'showGhost'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; }));
 ['nulling', 'excision', 'cyclo', 'sei'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; rebuild(true); afterChange(); }));
 $('fiberFrac').addEventListener('input', e => { state.fiberFrac = +e.target.value / 100; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(); afterChange(); }, 220); });
