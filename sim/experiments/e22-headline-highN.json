@@ -1,0 +1,12 @@
+{
+  "name": "e22-headline-highN",
+  "title": "E22 · Definitive modern-world headline (high N)",
+  "description": "The single number for the pitch, at high N for a tight interval: bare bladeRF vs the fully-equipped fused payload on the 2024-26 threat world, 120 maps × 3 altitudes.",
+  "nSeeds": 120,
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 },
+  "base": { "method": "both", "plan": "multi", "memory": "fade" },
+  "variants": [
+    { "label": "A", "name": "bare bladeRF", "cfg": { "rx": "bladerf", "frontEnd": "none", "nulling": false, "excision": false, "cyclo": false, "sei": false } },
+    { "label": "B", "name": "fully-equipped fused", "cfg": { "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true } }
+  ]
+}
