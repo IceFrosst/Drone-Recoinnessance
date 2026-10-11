@@ -1,5 +1,5 @@
 {
- "total": 8052,
+ "total": 8532,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -96,6 +96,12 @@
    "campaigns": 1080,
    "when": "2026-10-11T02:39:41.645Z",
    "seconds": 908
+  },
+  {
+   "name": "e16-flights-sweep",
+   "campaigns": 480,
+   "when": "2026-10-11T02:47:10.435Z",
+   "seconds": 396
   }
  ]
 }
