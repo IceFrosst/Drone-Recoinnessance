@@ -1,0 +1,14 @@
+{
+  "name": "e19-plan-recommended",
+  "title": "E19 · Best flight plan for the recommended payload",
+  "description": "The fused, fully-equipped payload (memory=fade) flown on each flight plan — single pass, parallel lines, crossing grid, multi-angle — on the modern threat world, 40 maps × 3 altitudes. Which routing pattern gets the most operators per sortie now that the receiver is good?",
+  "nSeeds": 40,
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 },
+  "base": { "method": "both", "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true, "memory": "fade" },
+  "variants": [
+    { "label": "A", "name": "single pass", "cfg": { "plan": "single" } },
+    { "label": "B", "name": "parallel lines", "cfg": { "plan": "parallel" } },
+    { "label": "C", "name": "crossing grid", "cfg": { "plan": "grid" } },
+    { "label": "D", "name": "multi-angle", "cfg": { "plan": "multi" } }
+  ]
+}
