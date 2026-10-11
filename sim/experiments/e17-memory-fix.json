@@ -1,0 +1,13 @@
+{
+  "name": "e17-memory-fix",
+  "title": "E17 · Does memory-fading fix the stale-data problem?",
+  "description": "Follow-up to e16: the recommended payload flown 8 flights against a relocating/retuning enemy, with the three memory policies. If fading old recordings recovers accuracy, that is the operational answer to 'more flights hurt'.",
+  "nSeeds": 40,
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 },
+  "base": { "method": "both", "plan": "grid", "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true, "nFlights": 8 },
+  "variants": [
+    { "label": "A", "name": "keep all", "cfg": { "memory": "all" } },
+    { "label": "B", "name": "fade ½ per flight", "cfg": { "memory": "fade" } },
+    { "label": "C", "name": "last flight only", "cfg": { "memory": "last" } }
+  ]
+}
