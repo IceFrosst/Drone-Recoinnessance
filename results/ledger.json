@@ -1,5 +1,5 @@
 {
- "total": 2712,
+ "total": 3432,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -48,6 +48,18 @@
    "campaigns": 900,
    "when": "2026-10-11T01:12:42.563Z",
    "seconds": 662
+  },
+  {
+   "name": "e08-ablation-modern",
+   "campaigns": 360,
+   "when": "2026-10-11T01:18:32.378Z",
+   "seconds": 319
+  },
+  {
+   "name": "e09-jammer-waveforms",
+   "campaigns": 360,
+   "when": "2026-10-11T01:23:08.099Z",
+   "seconds": 276
   }
  ]
 }

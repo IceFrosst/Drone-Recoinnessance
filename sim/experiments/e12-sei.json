@@ -1,0 +1,11 @@
+{
+  "name": "e12-sei",
+  "title": "E12 · Specific emitter ID (hardware fingerprint) vs retuning",
+  "description": "Frontline RF on with a high retune rate (operators change link settings between flights, breaking their tracks). SEI reads a hardware fingerprint that survives the settings change, so a retuned track re-links to its parent instead of resetting. Fused payload, everything on, across 40 maps × 3 altitudes.",
+  "nSeeds": 40,
+  "base": { "method": "both", "plan": "grid", "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "moveP": 0.15 },
+  "variants": [
+    { "label": "A", "name": "no SEI (retune breaks the track)", "cfg": { "sei": false } },
+    { "label": "B", "name": "SEI re-links retuned tracks", "cfg": { "sei": true } }
+  ]
+}
