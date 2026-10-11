@@ -36,7 +36,7 @@ function loadEngine(htmlPath) {
 function defaultCfg(over) {
   return Object.assign({ refl: true, realism: true, attDeg: 2.5, noise: 2, beam: 40, density: 150, margin: 4, convTolM: 4000,
     moveP: 0.35, nFlights: 4, rx: 'bladerf', method: 'both', plan: 'grid', planning: 'fixed', memory: 'all', omni: false, altM: 2000,
-    frontEnd: 'none', nulling: false, excision: false, cyclo: false }, over || {});
+    frontEnd: 'none', nulling: false, excision: false, cyclo: false, sei: false }, over || {});
 }
 
 module.exports = { loadEngine, defaultCfg };

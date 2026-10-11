@@ -432,6 +432,7 @@ details.model ul { margin: 6px 0; padding-left: 18px; font-size: 13px; color: va
             <label><input type="checkbox" id="nulling"> Adaptive nulling</label>
             <label><input type="checkbox" id="excision"> Time/freq excision</label>
             <label><input type="checkbox" id="cyclo"> Cyclostationary detect</label>
+            <label><input type="checkbox" id="sei"> SEI (fingerprint re-link)</label>
           </div>
           <span class="note" id="cmNote"></span>
         </div>
@@ -1801,6 +1802,14 @@ const CYCLO_GAIN_HOP_DB = 6;        // detection-threshold reduction for hopping
 const CYCLO_GAIN_CONT_DB = 3;       // ... weaker gain for continuous structured carriers (C2 / relay frame cadence)
 const CYCLO_GAIN_LOWRATE_DB = 5;    // ... extra gain on long-range low-rate spread links (the whole point of a cyclic detector)
 
+// Specific emitter identification (SEI): hardware imperfections (oscillator offset, I/Q imbalance, turn-on
+// transient) give each transmitter a fingerprint INDEPENDENT of its link settings. Both sides field it
+// (e.g. drone-ID sensors). Its value here: when an operator RETUNES between flights, its old track normally
+// breaks; with SEI we re-link the new emission to the same hardware, so the heat carries over instead of
+// resetting — and it keeps tracking even when the retune moves the hop rate out of the nominal gate. Honest
+// limit: the fingerprint needs enough SNR to read, so only a share of operators are identifiable.
+const SEI_READ_P = 0.7;             // share of operators whose hardware fingerprint is readable (strong ones)
+
 // Real-world population realism (2024-26 Ukraine picture; shares are opts on genWorld, see docs/research.md):
 //  • fibre-optic FPV — no RF control link at all (Russia 30-50 %, Ukraine ~15 % of FPV). A hard ceiling.
 //  • long-range low-rate spread links (ELRS SF12 / LoRa, ~−120 dBm) — buried below an energy detector.
@@ -2014,14 +2023,17 @@ function flyFlight(W, cfg, ctx, k, plan) {
   let tEnemy = 0, nextSnap = 0;
   // tracks: one per emitter and link-settings generation, kept across flights
   const trk = E.map(q => {
-    const key = q.idx + ':' + q.gen;
+    // SEI re-links a readable operator across link-settings generations: one gen-independent track instead
+    // of a fresh one per retune. Readability is a stable per-emitter property (strong emitters only).
+    const seiOn = cfg.sei && q.type === 'ctrl' && !q.decoy && hash01(W.seedNum ^ (q.idx * 2654435761)) < SEI_READ_P;
+    const key = seiOn ? (q.idx + ':sei') : (q.idx + ':' + q.gen);
     let tr = ctx.tracks.get(key);
     if (!tr) {
       const fp = Object.assign({}, q.fp, { hopRate: q.hr });
-      tr = { key, idx: q.idx, gen: q.gen, e: q.src, id: q.src.id + (q.gen ? "'".repeat(q.gen) : ''), type: q.type, pstage: pipeStage(Object.assign({}, q, { fp }), pcfg),
+      tr = { key, idx: q.idx, gen: q.gen, e: q.src, id: q.src.id + (!seiOn && q.gen ? "'".repeat(q.gen) : ''), type: q.type, sei: seiOn, pstage: pipeStage(Object.assign({}, q, { fp }), pcfg),
         post: CLASSES.map(c => CLASS_PRIOR[c]), bins: [], open: null, nDet: 0, nMiss: 0, nRej4: 0, maxSnr: -99, wins: new Set(), heard: new Set(), lastK: -1, lastT: -1e9, firstK: k, cc: [] };
       ctx.tracks.set(key, tr);
-    }
+    } else if (seiOn) { tr.gen = q.gen; }   // same hardware, new settings: keep the track, follow the current generation
     return tr;
   });
   const closeBin = tr => {
@@ -2685,7 +2697,7 @@ const HEAT_GAMMA = 0.48;
 const state = {
   seed: 'ALPHA1', tab: 0, rx: 'bladerf', method: 'both', plan: 'grid', planning: 'fixed', altM: 2000, nFlights: 4,
   memory: 'all', omni: false, moveP: 35, density: 150, realism: true, truth: true,
-  frontEnd: 'none', nulling: false, excision: false, cyclo: false,   // RF front end + the three DSP countermeasures
+  frontEnd: 'none', nulling: false, excision: false, cyclo: false, sei: false,   // RF front end + countermeasures
   fiberFrac: 0, loraFrac: 0, decoys: 0,                              // real-world threat mix (regenerates the world)
   showPaths: true, showCover: false, showNaive: false, showGhost: true, showSpectrum: true,
   playing: !REDUCED, speed: 160, t: 0, hover: -1, pin: -1, follow: false,
@@ -2702,7 +2714,7 @@ function cfg() {
   return { refl: true, realism: state.realism, attDeg: ATT_ERR_DEG, noise: 2, beam: BEAM_WIDTH_DEG,
     density: state.density, margin: 4, convTolM: 4000, moveP: state.moveP / 100, nFlights: state.nFlights,
     rx: state.rx, method: state.method, plan: state.plan, planning: state.planning, memory: state.memory, omni: state.omni, altM: state.altM,
-    frontEnd: state.frontEnd, nulling: state.nulling, excision: state.excision, cyclo: state.cyclo };
+    frontEnd: state.frontEnd, nulling: state.nulling, excision: state.excision, cyclo: state.cyclo, sei: state.sei };
 }
 function worldOpts() { return { c2: 2, relay: 2, fiberFrac: state.fiberFrac, loraFrac: state.loraFrac, decoys: state.decoys }; }
 function buildTimeline() {
@@ -3131,9 +3143,10 @@ function syncControls() {
   $('cmNote').textContent = (state.nulling || state.excision || state.cyclo)
     ? [state.nulling ? `Nulling: one spatial null (${state.rx === 'bladerf' ? '2-ch → 1 jammer' : '5-ch → up to 4'}) on the loudest jammer — digital, so it clears co-channel burying but not front-end spurs.` : '',
        state.excision ? 'Excision: notches a swept jammer / blanks a pulsed one; a barrage leaves nothing to claw back.' : '',
-       state.cyclo ? 'Cyclostationary: detects hop/packet cadence below the energy floor — the only thing that catches low-rate spread links.' : ''].filter(Boolean).join(' ')
-    : 'Digital countermeasures (after the ADC): nulling and excision recover co-channel signal; cyclostationary digs below the floor. The preselect filter above is what handles front-end overload.';
-  $('nulling').checked = state.nulling; $('excision').checked = state.excision; $('cyclo').checked = state.cyclo;
+       state.cyclo ? 'Cyclostationary: detects hop/packet cadence below the energy floor — the only thing that catches low-rate spread links.' : '',
+       state.sei ? 'SEI: a hardware fingerprint re-links a retuned operator to its old track, so a settings change no longer resets the heat (readable on strong emitters only).' : ''].filter(Boolean).join(' ')
+    : 'Digital countermeasures (after the ADC): nulling and excision recover co-channel signal; cyclostationary digs below the floor; SEI re-links a retuned operator by its hardware fingerprint. The preselect filter above is what handles front-end overload.';
+  $('nulling').checked = state.nulling; $('excision').checked = state.excision; $('cyclo').checked = state.cyclo; $('sei').checked = state.sei;
   $('fiberFrac').value = Math.round(state.fiberFrac * 100); $('fiberFracVal').textContent = Math.round(state.fiberFrac * 100) + '%';
   $('loraFrac').value = Math.round(state.loraFrac * 100); $('loraFracVal').textContent = Math.round(state.loraFrac * 100) + '%';
   $('decoys').value = state.decoys; $('decoysVal').textContent = state.decoys + (state.decoys === 1 ? ' decoy' : ' decoys');
@@ -3232,7 +3245,7 @@ $('moveP').addEventListener('input', e => { state.moveP = +e.target.value; syncC
 $('density').addEventListener('input', e => { state.density = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuild(true); afterChange(); }, 180); });
 $('realism').addEventListener('change', e => { state.realism = e.target.checked; cmpOldSim = null; rebuild(true); afterChange(); });
 ['truth', 'showSpectrum', 'showPaths', 'showCover', 'showNaive', 'showGhost'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; }));
-['nulling', 'excision', 'cyclo'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; rebuild(true); afterChange(); }));
+['nulling', 'excision', 'cyclo', 'sei'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; rebuild(true); afterChange(); }));
 $('fiberFrac').addEventListener('input', e => { state.fiberFrac = +e.target.value / 100; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(); afterChange(); }, 220); });
 $('loraFrac').addEventListener('input', e => { state.loraFrac = +e.target.value / 100; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(); afterChange(); }, 220); });
 $('decoys').addEventListener('input', e => { state.decoys = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(); afterChange(); }, 220); });
