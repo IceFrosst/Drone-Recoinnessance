@@ -1,5 +1,5 @@
 {
- "total": 12012,
+ "total": 12762,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -144,6 +144,12 @@
    "campaigns": 720,
    "when": "2026-10-11T03:44:36.303Z",
    "seconds": 507
+  },
+  {
+   "name": "e24-ladder-bestops",
+   "campaigns": 750,
+   "when": "2026-10-11T03:58:20.506Z",
+   "seconds": 655
   }
  ]
 }
