@@ -1,5 +1,5 @@
 {
- "total": 20562,
+ "total": 22962,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -180,6 +180,12 @@
    "campaigns": 1800,
    "when": "2026-10-11T05:37:17.150Z",
    "seconds": 1513
+  },
+  {
+   "name": "e30-megaN-headline",
+   "campaigns": 2400,
+   "when": "2026-10-11T06:34:56.204Z",
+   "seconds": 1959
   }
  ]
 }
