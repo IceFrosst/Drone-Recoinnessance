@@ -2718,6 +2718,7 @@ const state = {
   playing: !REDUCED, speed: 160, t: 0, hover: -1, pin: -1, follow: false,
   classified: true,                        // colour the heat + fixes by target type (off = one undifferentiated heat)
   film: false, filmPhase: 'raw', filmProg: 0, filterStage: 0,   // Film mode: raw heat -> run filters -> classified bloom
+  computing: false, _kt: false,            // a campaign is being computed off-thread (Web Worker); _kt = keep replay time
 };
 // HVT (the four located target types) is declared in campaign.js and shared across the concatenated script.
 // How far the raw->classified reveal has run: 1 = fully classified (normal use), animated in Film mode.
@@ -2753,14 +2754,61 @@ function rebuild(keepT) {
   state.t = clamp(frac, 0, 1) * timeline.total;
   if (REDUCED && !keepT) state.t = timeline.total;
 }
-function rebuildWorld() {
+function rebuildWorld(asyncC) {
   state.pin = -1; state.hover = -1;
   world = genWorld(state.seed, state.decoys > 0 || state.fiberFrac > 0 ? 8 : 6, worldOpts());
   world.base = renderBase(world);
   cmpOldSim = null;
-  rebuild(false);
+  if (asyncC) computeAsync(false); else rebuild(false);
   if (view.w) fitView();
   try { history.replaceState(null, '', '#' + state.seed); } catch (e) {}
+}
+
+/* ---------- off-thread compute: run the campaign in a Web Worker so the UI never freezes ----------
+   A single campaign is ~2–6 s of float math; on one JS thread that froze the whole page on every toggle.
+   The worker runs the SAME model code — sliced from this page's own <script> at the HEAT-MAP UI marker,
+   exactly the split sim/engine.js uses headless — with the tiny DOM stubs that section needs, and returns
+   `camp` as plain data (verified: no functions, structured-cloneable). genWorld + draw stay on the main
+   thread, and the world is deterministic from the seed, so the worker rebuilds an identical one; a cfg-only
+   change does no heavy work on the main thread at all. The worker posts a fast `finalOnly` result first
+   (the accuracy numbers + final heat, provably identical to the full run) then the full per-flight replay.
+   Falls back to the synchronous path if a Worker can't be created (e.g. a strict CSP). */
+let CW = null, CW_REQ = 0, CW_ON = false;
+function initWorker() {
+  try {
+    if (typeof Worker === 'undefined' || typeof Blob === 'undefined') return;
+    const MARK = '/* ===================================================================== HEAT-MAP UI */';
+    let src = '';
+    for (const sc of document.querySelectorAll('script:not([src])')) { const i = sc.textContent.indexOf(MARK); if (i >= 0) { src = sc.textContent.slice(0, i); break; } }
+    if (!src) return;
+    const stubs = 'var document={documentElement:{},createElement:function(){return{getContext:function(){return{}}};},getElementById:function(){return null;}};'
+      + 'var getComputedStyle=function(){return{getPropertyValue:function(){return "#000000";}};};'
+      + 'var ImageData=function(){};var window={matchMedia:function(){return{matches:false};}};';
+    const harness = 'var __W=null,__K="";self.onmessage=function(e){var d=e.data,key=d.seed+"|"+d.nEmit+"|"+JSON.stringify(d.worldOpts);'
+      + 'try{if(key!==__K){__W=genWorld(d.seed,d.nEmit,d.worldOpts);__K=key;}'
+      + 'var quick=runCampaign(__W,Object.assign({},d.cfg,{finalOnly:true}));self.postMessage({req:d.req,stage:"quick",camp:quick});'
+      + 'var full=runCampaign(__W,d.cfg);self.postMessage({req:d.req,stage:"full",camp:full});}'
+      + 'catch(err){self.postMessage({req:d.req,stage:"error",msg:String(err&&err.message||err)});}};';
+    const blob = new Blob([stubs + '\n' + src + '\n' + harness], { type: 'text/javascript' });
+    CW = new Worker(URL.createObjectURL(blob));
+    CW.onmessage = onWorkerMsg;
+    CW.onerror = () => { CW_ON = false; state.computing = false; };
+    CW_ON = true;
+  } catch (e) { CW_ON = false; }
+}
+function onWorkerMsg(e) {
+  const m = e.data; if (m.req !== CW_REQ) return;             // a newer change has superseded this result
+  if (m.stage === 'error') { CW_ON = false; state.computing = false; rebuild(state._kt); afterChange(); return; }
+  const frac = state._kt && timeline ? state.t / timeline.total : 0;
+  camp = m.camp; timeline = buildTimeline();
+  state.t = (state._kt ? clamp(frac, 0, 1) : (REDUCED ? 1 : 0)) * timeline.total;
+  if (m.stage === 'full') state.computing = false;
+  afterChange();
+}
+function computeAsync(keepT) {
+  if (!CW_ON) { rebuild(keepT); afterChange(); return; }     // synchronous fallback
+  state._kt = keepT; state.computing = true; const req = ++CW_REQ;
+  CW.postMessage({ req, seed: state.seed, nEmit: (state.decoys > 0 || state.fiberFrac > 0 ? 8 : 6), worldOpts: worldOpts(), cfg: cfg() });
 }
 
 /* ---------- heat color ramp (single-hue amber, transparent -> hot) ---------- */
@@ -2835,7 +2883,7 @@ function draw(now) {
   const prog = revealProg();        // 0 = one undifferentiated heat, 1 = split into coloured per-type heat
   if (!state.showNaive && hi >= 0) {
     const pf = camp.perFlight[hi];
-    if (prog < 1) { const hc = heatCanvas(pf.belief); if (hc) { ctx.globalAlpha = 1 - prog; ctx.drawImage(hc, X(0), Y(0), MAP_W * s, MAP_H * s); ctx.globalAlpha = 1; } }
+    if (prog < 1 && pf.belief) { const hc = heatCanvas(pf.belief); if (hc) { ctx.globalAlpha = 1 - prog; ctx.drawImage(hc, X(0), Y(0), MAP_W * s, MAP_H * s); ctx.globalAlpha = 1; } }
     if (prog > 0 && pf.grids) for (const ty of HVT) { const hc = heatTypeCanvas(pf.grids[ty], TYPE_COL[ty], 210); if (hc) { ctx.globalAlpha = prog; ctx.drawImage(hc, X(0), Y(0), MAP_W * s, MAP_H * s); ctx.globalAlpha = 1; } }
   }
   const fl = camp.flights[seg.k];
@@ -2970,6 +3018,17 @@ function draw(now) {
   // show the "processing" badge only during the first part of a processing phase, and never at the very end
   const procActive = seg.kind === 'proc' && (state.t - seg.t0) < seg.dur * 0.6 && state.t < timeline.total - 1;
   $('procBadge').hidden = !procActive;
+
+  // off-thread recompute indicator: the campaign is being solved in the worker; the UI stays live meanwhile
+  if (state.computing) {
+    const bw = 168, bh = 30, bx = (w - bw) / 2, byy = 14, pad = 13;
+    ctx.fillStyle = rgba(COL.ground, 0.9); ctx.strokeStyle = rgba(COL.amber, 0.55); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, byy, bw, bh, 7) : ctx.rect(bx, byy, bw, bh); ctx.fill(); ctx.stroke();
+    const ang = (now || 0) / 1000 * 5, cx = bx + pad + 6, cy = byy + bh / 2;
+    ctx.strokeStyle = rgba(COL.amber, 0.9); ctx.lineWidth = 2; ctx.beginPath();
+    ctx.arc(cx, cy, 6, ang, ang + Math.PI * 1.4); ctx.stroke();
+    halo('recomputing…', cx + 16, cy, COL.amber, FONT_LABEL, 'left');
+  }
 }
 
 /* ---------- on-map target-type HUD (what is lit up, by type) ---------- */
@@ -3141,17 +3200,17 @@ function segButtons(id, opts, cur, onPick) {
 }
 function syncControls() {
   $('seed').value = state.seed;
-  segButtons('rx', [{ v: 'bladerf', l: 'bladeRF · 2-ch' }, { v: 'array', l: 'Array · 5-ch' }, { v: 'fused', l: 'Both (fused)' }], state.rx, v => { state.rx = v; rebuild(true); afterChange(); });
-  segButtons('method', [{ v: 'brg', l: 'Bearings' }, { v: 'rss', l: 'Strength' }, { v: 'both', l: 'Combined' }], state.method, v => { state.method = v; rebuild(true); afterChange(); });
+  segButtons('rx', [{ v: 'bladerf', l: 'bladeRF · 2-ch' }, { v: 'array', l: 'Array · 5-ch' }, { v: 'fused', l: 'Both (fused)' }], state.rx, v => { state.rx = v; computeAsync(true); });
+  segButtons('method', [{ v: 'brg', l: 'Bearings' }, { v: 'rss', l: 'Strength' }, { v: 'both', l: 'Combined' }], state.method, v => { state.method = v; computeAsync(true); });
   const arr = state.rx === 'array', fused = state.rx === 'fused';
   $('rxVal').textContent = arr ? ARRAY.sub : fused ? FUSED.sub : `${BRF.ibw} · ≤6 GHz · 2-ch`;
   $('rxNote').textContent = arr ? 'Five coherent channels give a true azimuth — no left/right mirror, so one pass can locate. But it sweeps slower (fewer bursts) and is blind above 1.77 GHz, missing the 2.4 GHz operators the bladeRF hears.' : fused ? `Both receivers flown together (~${FUSED.price}, ${FUSED.grams} g). Each emitter goes to the receiver good at it: the Kraken takes ≤1.77 GHz operators (clean azimuth, no mirror, tight); the bladeRF takes the rest, including 2.4 GHz. Full band and mirror-free where it counts — at the SWaP cost of two receivers.` : 'Two channels off one clock: a cone angle with a left/right mirror that crossing headings resolve. Wideband and fast — hears 2.4/5.8 GHz.';
   $('methodRow').hidden = arr || fused;
-  segButtons('plan', PLANS.map(p => ({ v: p.id, l: p.name })), state.plan, v => { state.plan = v; state.nFlights = PLANS.find(p => p.id === v).flights.length; rebuild(true); afterChange(); });
-  segButtons('planning', [{ v: 'fixed', l: 'Fixed upfront' }, { v: 'adaptive', l: 'Plan between flights' }], state.planning, v => { state.planning = v; rebuild(true); afterChange(); });
-  segButtons('alt', ALT_CHOICES.map(a => ({ v: a, l: (a / 1000) + ' km' })), state.altM, v => { state.altM = +v; rebuild(true); afterChange(); });
-  segButtons('mem', [{ v: 'all', l: 'Keep all' }, { v: 'fade', l: 'Fade' }, { v: 'last', l: 'Last only' }], state.memory, v => { state.memory = v; rebuild(true); afterChange(); });
-  segButtons('frontEnd', [{ v: 'none', l: 'Bare' }, { v: 'lna', l: 'LNA' }, { v: 'filter', l: 'Filter' }, { v: 'filterlna', l: 'Filter→LNA' }, { v: 'lnafilter', l: 'LNA→Filter' }], state.frontEnd, v => { state.frontEnd = v; rebuild(true); afterChange(); });
+  segButtons('plan', PLANS.map(p => ({ v: p.id, l: p.name })), state.plan, v => { state.plan = v; state.nFlights = PLANS.find(p => p.id === v).flights.length; computeAsync(true); });
+  segButtons('planning', [{ v: 'fixed', l: 'Fixed upfront' }, { v: 'adaptive', l: 'Plan between flights' }], state.planning, v => { state.planning = v; computeAsync(true); });
+  segButtons('alt', ALT_CHOICES.map(a => ({ v: a, l: (a / 1000) + ' km' })), state.altM, v => { state.altM = +v; computeAsync(true); });
+  segButtons('mem', [{ v: 'all', l: 'Keep all' }, { v: 'fade', l: 'Fade' }, { v: 'last', l: 'Last only' }], state.memory, v => { state.memory = v; computeAsync(true); });
+  segButtons('frontEnd', [{ v: 'none', l: 'Bare' }, { v: 'lna', l: 'LNA' }, { v: 'filter', l: 'Filter' }, { v: 'filterlna', l: 'Filter→LNA' }, { v: 'lnafilter', l: 'LNA→Filter' }], state.frontEnd, v => { state.frontEnd = v; computeAsync(true); });
   const fed = FRONT_ENDS[state.frontEnd];
   $('feVal').textContent = fed.label; $('feCost').textContent = fed.addCost === '$0' ? '' : fed.addCost + ' · ' + fed.grams + ' g';
   $('feNote').textContent = fed.note;
@@ -3168,7 +3227,7 @@ function syncControls() {
   $('fiberNote').textContent = state.fiberFrac > 0 ? 'Fibre-optic drones emit no RF — a hard ceiling this method can never beat.' : '';
   $('loraNote').textContent = state.loraFrac > 0 ? 'Long-range low-rate links sit below the energy floor — only cyclostationary detection catches them.' : '';
   $('decoyNote').textContent = state.decoys > 0 ? 'Decoys transmit a real control-link signature from empty ground → false fixes no DF can remove.' : '';
-  segButtons('omni', [{ v: 'dir', l: 'Aimed (directional)' }, { v: 'omni', l: 'Stock omni' }], state.omni ? 'omni' : 'dir', v => { state.omni = v === 'omni'; rebuild(true); afterChange(); });
+  segButtons('omni', [{ v: 'dir', l: 'Aimed (directional)' }, { v: 'omni', l: 'Stock omni' }], state.omni ? 'omni' : 'dir', v => { state.omni = v === 'omni'; computeAsync(true); });
   $('methodVal').textContent = METHODS[state.method].sub;
   $('methodNote').textContent = state.method === 'rss' ? 'One channel: a strength map. No bearings. Fails against aimed antennas — see the Combined and Bearings options.' : state.method === 'brg' ? 'Two channels, cone-angle only. One pass leaves a left/right mirror; crossing headings break it.' : 'Two channels: bearings carry the fix, strength trims the ambiguity.';
   $('planVal').textContent = PLANS.find(p => p.id === state.plan).name;
@@ -3251,22 +3310,22 @@ function setTab(i) {
   if (i === 1) updateCompare(); else { resize(); updatePanel(); }
 }
 document.querySelectorAll('.tabs button').forEach((b, i) => b.addEventListener('click', () => setTab(i)));
-$('reroll').addEventListener('click', () => { state.seed = newSeed(); rebuildWorld(); setPlaying(true); afterChange(); });
-$('seed').addEventListener('keydown', e => { if (e.key !== 'Enter') return; const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10); if (v.length >= 2) { state.seed = v; rebuildWorld(); setPlaying(true); } afterChange(); });
+$('reroll').addEventListener('click', () => { state.seed = newSeed(); rebuildWorld(true); setPlaying(true); });
+$('seed').addEventListener('keydown', e => { if (e.key !== 'Enter') return; const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10); if (v.length >= 2) { state.seed = v; rebuildWorld(true); setPlaying(true); } else afterChange(); });
 function newSeed() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 6; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 let deb = null;
-$('nFlights').addEventListener('input', e => { state.nFlights = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuild(true); afterChange(); }, 200); });
-$('moveP').addEventListener('input', e => { state.moveP = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuild(true); afterChange(); }, 180); });
-$('density').addEventListener('input', e => { state.density = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuild(true); afterChange(); }, 180); });
-$('realism').addEventListener('change', e => { state.realism = e.target.checked; cmpOldSim = null; rebuild(true); afterChange(); });
-$('spoof').addEventListener('change', e => { state.spoof = e.target.checked; cmpOldSim = null; rebuild(true); afterChange(); });
-$('equipRec').addEventListener('click', () => { state.rx = 'fused'; state.frontEnd = 'filterlna'; state.nulling = state.excision = state.cyclo = state.sei = true; rebuild(true); syncControls(); afterChange(); });
-$('equipBare').addEventListener('click', () => { state.frontEnd = 'none'; state.nulling = state.excision = state.cyclo = state.sei = false; rebuild(true); syncControls(); afterChange(); });
+$('nFlights').addEventListener('input', e => { state.nFlights = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { computeAsync(true); }, 200); });
+$('moveP').addEventListener('input', e => { state.moveP = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { computeAsync(true); }, 180); });
+$('density').addEventListener('input', e => { state.density = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { computeAsync(true); }, 180); });
+$('realism').addEventListener('change', e => { state.realism = e.target.checked; cmpOldSim = null; computeAsync(true); });
+$('spoof').addEventListener('change', e => { state.spoof = e.target.checked; cmpOldSim = null; computeAsync(true); });
+$('equipRec').addEventListener('click', () => { state.rx = 'fused'; state.frontEnd = 'filterlna'; state.nulling = state.excision = state.cyclo = state.sei = true; syncControls(); computeAsync(true); });
+$('equipBare').addEventListener('click', () => { state.frontEnd = 'none'; state.nulling = state.excision = state.cyclo = state.sei = false; syncControls(); computeAsync(true); });
 ['truth', 'showSpectrum', 'showPaths', 'showCover', 'showNaive', 'showGhost'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; }));
-['nulling', 'excision', 'cyclo', 'sei'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; rebuild(true); afterChange(); }));
-$('fiberFrac').addEventListener('input', e => { state.fiberFrac = +e.target.value / 100; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(); afterChange(); }, 220); });
-$('loraFrac').addEventListener('input', e => { state.loraFrac = +e.target.value / 100; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(); afterChange(); }, 220); });
-$('decoys').addEventListener('input', e => { state.decoys = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(); afterChange(); }, 220); });
+['nulling', 'excision', 'cyclo', 'sei'].forEach(id => $(id).addEventListener('change', e => { state[id] = e.target.checked; computeAsync(true); }));
+$('fiberFrac').addEventListener('input', e => { state.fiberFrac = +e.target.value / 100; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(true); }, 220); });
+$('loraFrac').addEventListener('input', e => { state.loraFrac = +e.target.value / 100; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(true); }, 220); });
+$('decoys').addEventListener('input', e => { state.decoys = +e.target.value; syncControls(); clearTimeout(deb); deb = setTimeout(() => { rebuildWorld(true); }, 220); });
 $('play').addEventListener('click', () => { if (!state.playing && state.t >= timeline.total) state.t = 0; setPlaying(!state.playing); });
 $('toEnd').addEventListener('click', () => { state.t = timeline.total; setPlaying(false); if (!state.follow) fitView(); updatePanel(); });
 $('scrub').addEventListener('input', e => { state.t = +e.target.value / 1000 * timeline.total; updatePanel(); });
@@ -3352,6 +3411,7 @@ function updateFilmOverlay() {
 fillStatic();
 resize();
 rebuildWorld();
+initWorker();                 // spin up the off-thread campaign worker for subsequent interactions
 setPlaying(state.playing);
 syncControls();
 updatePanel();

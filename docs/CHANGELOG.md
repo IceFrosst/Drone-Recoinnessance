@@ -11,7 +11,8 @@ Every version is a git commit (and a local tag) so a bad change can be rolled ba
 | v1.2 | `a1ed0c6` | jammer interference model (merged) |
 | v1.3 | `031138a` | RF front end + EW countermeasures |
 | v1.4 | `79393f4` | specific emitter identification (SEI) |
-| v1.5 | (this commit) | GNSS spoofing (confidently-wrong failure) |
+| v1.5 | `(tagged)` | GNSS spoofing (confidently-wrong failure) |
+| v1.6 | (this commit) | off-thread compute — interactive accuracy no longer freezes the UI |
 
 The one headline number, from `e05-headline` (24 maps × 3 altitudes = 72 campaigns per variant, paired — every variant flies the same maps), **drone-operator fixes within 500 m**:
 
@@ -25,6 +26,20 @@ The one headline number, from `e05-headline` (24 maps × 3 altitudes = 72 campai
 Fully equipped vs the bare starting payload: operator fixes within 500 m **more than doubled (22 % → 51 %)**, all-target located **+12 pp**, median error **down a third**, false fixes from front-end overload **eliminated**, and calibration honesty held (truth inside the 95 % ellipse ~90 %).
 
 Validated at scale (`e07`, 100 maps × 3 altitudes = 300 campaigns per variant): the fused everything-on payload lifts operators within 500 m from **20 % to 47 %** (paired Δ +27.3 pp, 95 % bootstrap CI [+24.1, +30.7]) and operators located from 56 % to 86 %. On the full 2024-26 threat mix (`e10`, 100 maps), the gain holds against fibre FPV, low-rate links and decoys.
+
+---
+
+## v1.6 — off-thread compute: interactive accuracy without the freeze (2026-10-11)
+
+The problem: every setting change recomputed the whole campaign **synchronously on the one JS thread**, so the page froze for ~6 s per toggle (and a slider drag fired one freeze per tick). Measured: a single campaign is ~6.0 s in the UI path (4 flights flown + a belief grid solved for *every* flight), ~2.4 s of which is the final-flight belief that the accuracy panel actually needs.
+
+The fix is **structural, not a faster formula** — the float math is the float math. The campaign now runs in a **Web Worker** (off the main thread), so the UI never blocks:
+- The worker runs the *same* model code, sliced from this page's own `<script>` at the `HEAT-MAP UI` marker (the same split `sim/engine.js` uses headless) — no duplication, no second copy to drift. `genWorld` and `draw` stay on the main thread; the world is deterministic from the seed, so the worker rebuilds an identical one. `camp` comes back as plain data (verified: zero functions, structured-cloneable).
+- It posts a fast **`finalOnly`** result first (the accuracy numbers + final heat — **provably identical** to the full run, checked across front-end / receiver / countermeasure configs) then the full per-flight replay.
+- A **cfg-only change** (toggle, receiver, plan, altitude, countermeasure) does *no* heavy work on the main thread at all.
+- Graceful **synchronous fallback** if a Worker can't be created (e.g. a strict CSP) — the tool still works, just without the speedup.
+
+Measured in Chromium (equip-recommended toggle): the synchronous block the user feels dropped from **~6000 ms → 1 ms**; worst main-thread stall across the entire compute **70 ms**; located-count from the worker **identical** to a main-thread recompute of the same config. Zero change to any reported accuracy number — this is a responsiveness change only, so no new A/B/C experiment. Model section untouched, so the batch runner (`sim/batch.js`) and Film capture are unaffected.
 
 ---
 
