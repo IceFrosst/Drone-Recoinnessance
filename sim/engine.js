@@ -35,7 +35,8 @@ function loadEngine(htmlPath) {
 // The UI's default configuration (cfg() in heatmap.html), so headless runs match the page.
 function defaultCfg(over) {
   return Object.assign({ refl: true, realism: true, attDeg: 2.5, noise: 2, beam: 40, density: 150, margin: 4, convTolM: 4000,
-    moveP: 0.35, nFlights: 4, rx: 'bladerf', method: 'both', plan: 'grid', planning: 'fixed', memory: 'all', omni: false, altM: 2000 }, over || {});
+    moveP: 0.35, nFlights: 4, rx: 'bladerf', method: 'both', plan: 'grid', planning: 'fixed', memory: 'all', omni: false, altM: 2000,
+    frontEnd: 'none', nulling: false, excision: false, cyclo: false }, over || {});
 }
 
 module.exports = { loadEngine, defaultCfg };

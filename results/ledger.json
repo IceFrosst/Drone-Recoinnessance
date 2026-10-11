@@ -1,11 +1,17 @@
 {
- "total": 180,
+ "total": 396,
  "experiments": [
   {
    "name": "e00-baseline",
    "campaigns": 180,
    "when": "2026-10-10T23:48:15.414Z",
    "seconds": 117
+  },
+  {
+   "name": "e01-merged-baseline",
+   "campaigns": 216,
+   "when": "2026-10-10T23:51:40.849Z",
+   "seconds": 152
   }
  ]
 }

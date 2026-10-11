@@ -60,7 +60,8 @@ if (!isMainThread) {
       };
     }
     // false tracks: located fixes on something that is not a live target (spurs, decoys, relays mistaken for operators)
-    m.falseLoc = last.filter(r => r.located && r.falseTrack).length;
+    m.falseLoc = last.filter(r => r.falsePos || (r.located && r.falseTrack)).length;
+    m.spurBursts = c.summary.spurBursts || 0;
     m.decoyLoc = last.filter(r => r.located && r.decoy).length;
     return m;
   }

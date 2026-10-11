@@ -915,7 +915,17 @@ function genWorld(seed, nEmit, opts) {
   for (let i = 0; i < nJ; i++) {
     const p = place(3000, 10000);
     const lo = R.pick([430, 760, 1260, 2150]);
-    ems.push({ type: 'jam', x: p.x, y: p.y, idx: ems.length, jamR: R.range(6000, 9500), fMHz: lo, fp: { hop: false, burstBW: R.range(10, 40), cont: true }, pclass: 'wideband', sig: `${lo}–${Math.round(lo * 1.6)} MHz wideband noise · continuous` });
+    // Jammer waveform (what Russian trench/EW jammers actually do): barrage fills the whole band all the
+    // time; a swept jammer slides a narrow tone across the band, hitting any one channel only part of the
+    // time; a pulsed jammer blinks the whole band on and off. The waveform decides how much time/frequency
+    // excision can claw back — a barrage leaves nothing to notch, a swept/pulsed jammer leaves gaps.
+    const wf = R.pick(['barrage', 'barrage', 'swept', 'pulsed']);   // barrage most common, but not alone
+    const sweepHz = R.range(0.3, 1.2);                               // full-band sweeps per second (swept)
+    const sweptCover = R.range(0.18, 0.4);                          // fraction of the band a swept tone covers at once
+    const pulseHz = R.range(2, 8), pulseDuty = R.range(0.3, 0.6);    // pulse rate and on-fraction (pulsed)
+    ems.push({ type: 'jam', x: p.x, y: p.y, idx: ems.length, jamR: R.range(6000, 9500), fMHz: lo, waveform: wf, sweepHz, sweptCover, pulseHz, pulseDuty,
+      fp: { hop: false, burstBW: R.range(10, 40), cont: wf !== 'pulsed' }, pclass: 'wideband',
+      sig: `${lo}–${Math.round(lo * 1.6)} MHz ${wf} jammer · ${wf === 'barrage' ? 'continuous wideband noise' : wf === 'swept' ? 'sweeping tone' : 'pulsed'}` });
   }
   for (let i = 0; i < nR; i++) {
     const p = place(1500, 14000, true);
@@ -1681,6 +1691,79 @@ const JAM_BLACKOUT_DB = 4.5;        // desens above this starts to black out co-
 const JAM_BLACKOUT_MAX = 0.94;      // deepest detection-probability cut at full desense
 const SPUR_DESENS_DB = 4;           // desens above this starts front-end saturation spurs
 const SPUR_MAX = 3;                 // phantom bursts per intercept at full saturation
+
+/* =====================================================================
+   FRONT END (preselect filter + LNA) and the three software countermeasures.
+   NOTIONAL values; the front-end numbers are placeholders for bladeRF / AD9361
+   plus a Nooelec-class LNA and a SAW preselect — replace with bench figures.
+   The physical split these model, and the single most important honest point:
+     • A preselect FILTER sits BEFORE the ADC (analog), so it is the only thing
+       that stops an out-of-band jammer from overloading the front end — it is
+       what kills the saturation spurs and the broadband desense.
+     • An LNA lowers the noise figure (detect weaker/farther emitters) but it
+       ALSO lowers the overload headroom, so in a strong-signal/jamming sector a
+       bare LNA makes saturation WORSE. Order matters: filter→LNA protects the
+       LNA; LNA→filter does not.
+     • NULLING, EXCISION and CYCLOSTATIONARY detection are DIGITAL, after the
+       ADC. They recover co-channel signal and dig below the floor, but they
+       CANNOT undo front-end saturation. So the filter and the DSP are
+       complementary, not redundant — you need the filter for the overload and
+       the DSP for the co-channel. This is the whole systems argument.
+   ===================================================================== */
+// sens: dB added to every signal's SNR (noise-figure improvement). spurMult: front-end saturation-spur
+// rate vs bare SDR. desensOOB: multiplier on an out-of-band jammer's broadband desense (a preselect
+// rejects it; an LNA does not). overloadHeadroomDb: raises/lowers the desens at which spurs begin.
+const FRONT_ENDS = {
+  none:      { label: 'Bare SDR',                 short: 'none',       sens: 0,    spurMult: 1.0, desensOOB: 1.0,  overloadHeadroomDb: 0,  grams: 0,  addCost: '$0',  note: 'bladeRF straight to antenna: widest open front end, easiest to overload.' },
+  lna:       { label: 'LNA only',                 short: 'LNA',        sens: 4.0,  spurMult: 2.3, desensOOB: 1.0,  overloadHeadroomDb: -7, grams: 15, addCost: '+$25', note: 'More sensitivity (hears weaker/farther), but less headroom: a strong jammer saturates it sooner — more spurs.' },
+  filter:    { label: 'Preselect filter only',    short: 'filter',     sens: -1.0, spurMult: 0.18,desensOOB: 0.1,  overloadHeadroomDb: 6,  grams: 12, addCost: '+$35', note: 'SAW/band-pass before the SDR throws away out-of-band energy: far fewer spurs and no broadband desense from an off-band jammer. Costs ~1 dB of sensitivity.' },
+  filterlna: { label: 'Filter → LNA (recommended)',short: 'filter+LNA', sens: 3.0,  spurMult: 0.18,desensOOB: 0.1,  overloadHeadroomDb: 6,  grams: 25, addCost: '+$60', note: 'Filter first rejects the jammer, then the LNA sets a low noise figure on what is left: both the sensitivity AND the overload protection. The one to build.' },
+  lnafilter: { label: 'LNA → Filter (wrong order)',short: 'LNA+filter', sens: 3.0,  spurMult: 2.4, desensOOB: 1.0,  overloadHeadroomDb: -9, grams: 25, addCost: '+$60', note: 'LNA sees the full out-of-band jammer first and saturates before the filter can help — sensitivity without the protection. Shown to make the ordering lesson concrete.' },
+};
+const frontEndOf = cfg => FRONT_ENDS[cfg.frontEnd] || FRONT_ENDS.none;
+
+// Adaptive nulling (MVDR / spatial null steered at the jammer). Two coherent channels give ONE null;
+// five channels give deeper, narrower nulls and up to four of them. A null is a direction, so it also
+// digs a hole in the wanted pattern near the jammer's bearing (collateral), and its depth is limited by
+// inter-channel phase calibration, not infinite.
+const NULL_DEPTH_2CH_DB = 16;       // achievable jammer suppression, 2-element interferometer (calibration-limited)
+const NULL_DEPTH_5CH_DB = 26;       // ... 5-channel coherent array
+const NULL_FLOOR_2CH = 0.14;        // residual fraction of jammer power after a 2-ch null (phase mismatch)
+const NULL_FLOOR_5CH = 0.04;        // ... 5-channel
+const NULL_WIDTH_2CH_DEG = 34;      // half-width of the self-inflicted notch, 2 elements (broad)
+const NULL_WIDTH_5CH_DEG = 9;       // ... 5 elements (narrow)
+const NULL_NOTCH_DB = 9;            // worst-case loss on a wanted signal that sits inside the null
+const NULLS_2CH = 1, NULLS_5CH = 4; // simultaneous nulls = channels − 1
+
+// Time/frequency excision: notch the jammed sub-band (swept) or blank the jammed slices (pulsed) and keep
+// the rest. Recovers nothing against a barrage jammer (it fills all of band, all of the time).
+const EXCISION_EFF = 0.8;           // fraction of the recoverable (non-barrage) jammer effect it removes
+
+// Cyclostationary (feature) detection: a drone control link's packet/hop cadence is a cyclic feature that
+// survives a raised noise floor, so a matched cyclic detector works several dB below an energy detector.
+// It only helps signatures in the library (matched), and needs several cycles to integrate (latency).
+const CYCLO_GAIN_HOP_DB = 6;        // detection-threshold reduction for hopping control links (strong cyclic feature)
+const CYCLO_GAIN_CONT_DB = 3;       // ... weaker gain for continuous structured carriers (C2 / relay frame cadence)
+
+// Which jammers are in range right now and how deep, so one null can be steered at the strongest and a
+// second jammer (which a 2-ch null cannot also cover) is accounted for separately. Returns the list sorted
+// by desense, each with its instantaneous on/off (for pulsed/swept excision bookkeeping).
+function jammersHere(W, px, py) {
+  const out = [];
+  for (const J of W.jammers) { const dd = Math.hypot(px - J.x, py - J.y); if (dd < J.jamR) { const v = JAM_DESENS_DB * Math.sqrt(1 - (dd / J.jamR) ** 2); out.push({ J, desens: v }); } }
+  out.sort((a, b) => b.desens - a.desens);
+  return out;
+}
+// Instantaneous share of a jammer's nominal effect that is actually present, by waveform. A pulsed jammer
+// is off between pulses; a swept jammer only covers part of the band at a time. Excision exploits exactly
+// this gap, so the function also returns how much excision can claw back.
+function jamWaveform(J, t, coBandWithTarget) {
+  if (!J || J.waveform === 'barrage') return { present: 1, recoverable: 0 };
+  if (J.waveform === 'pulsed') { const on = ((t * J.pulseHz) % 1) < J.pulseDuty; return { present: on ? 1 : 0, recoverable: 1 }; }
+  // swept: a narrow tone slides across the band; a given target channel is hit sweptCover of the time
+  const phase = (t * J.sweepHz) % 1, hit = phase < J.sweptCover;
+  return { present: coBandWithTarget && hit ? 1 : coBandWithTarget ? 0.15 : 0, recoverable: 1 };
+}
 // Clutter the sorter cannot separate from a target (other links with the same band and fingerprint)
 const LEAK_U_TOL = 0.12;            // bearing methods: within this cone-angle difference the two are confusable
 const LEAK_P_BRG = 0.5;             // ... and a confusable burst is filed under the target at this rate
@@ -1846,6 +1929,16 @@ function flyFlight(W, cfg, ctx, k, plan) {
   const E = ctx.epochs[k], route = buildRoute(W, plan);
   const R = makeRng(W.seed + '|fly|' + k), Rp = makeRng(W.seed + '|popfly|' + k);
   const rxt = rxOf(cfg);
+  // Front end (preselect filter / LNA) and the digital countermeasures. Nulling needs ≥2 coherent channels,
+  // so it is available on the bladeRF (2-ch), the array (5-ch) and the fused payload, but never strength-only.
+  const fe = frontEndOf(cfg);
+  const coherentRx = !(!rxt.array && !rxt.fused && cfg.method === 'rss');
+  const canNull = cfg.nulling && coherentRx;
+  const nChan = rxt.array ? 5 : rxt.fused ? 5 : 2;          // the Kraken half gives 5 in a fused payload
+  const nullDepthDb = nChan >= 5 ? NULL_DEPTH_5CH_DB : NULL_DEPTH_2CH_DB;
+  const nullResidual = nChan >= 5 ? NULL_FLOOR_5CH : NULL_FLOOR_2CH;
+  const nullWidthDeg = nChan >= 5 ? NULL_WIDTH_5CH_DEG : NULL_WIDTH_2CH_DEG;
+  const nNulls = nChan >= 5 ? NULLS_5CH : NULLS_2CH;         // how many jammers one receiver can null at once
   const alt = plan.alt, altZ = W.meanH + alt, dwell = rxt.revisitS, bw = cfg.beam, L = W.launch;
   const pcfg = { bands: rxt.array ? bandsFor(ARRAY.ceil) : brfBands(), selfNoise: PIPE.selfNoise, hopRate: PIPE.hopRate, burstMs: PIPE.burstMs, burstBW: PIPE.burstBW };
   let px = L.x, py = L.y, wi = 0, goal = route.wps[0], hdg = azOf(goal.x - px, goal.y - py), homing = false;
@@ -1925,13 +2018,17 @@ function flyFlight(W, cfg, ctx, k, plan) {
 
     // --- electronic warfare (same model as the live sim)
     const fr = W.front(py), gnssDepth = clamp((px - (fr.f - GNSS_BELT_WEST)) / GNSS_BELT_RAMP, 0, 1), inGnss = gnssDepth > 0.02;
-    let jam = null; desens = 0;
-    for (const J of W.jammers) { const dd = Math.hypot(px - J.x, py - J.y); if (dd < J.jamR) { const v = JAM_DESENS_DB * Math.sqrt(1 - (dd / J.jamR) ** 2); if (v > desens) { desens = v; jam = J; } } }
-    // The active jammer's occupied band (lo .. ~1.6×lo wideband noise) and its bearing from the aircraft,
-    // for the co-band blackout / bearing-bias / spur effects below.
-    const jamBand = jam ? [jam.fMHz * 0.92, jam.fMHz * 1.6 * 1.05] : null;
-    const inJamBand = f => !!jamBand && f >= jamBand[0] && f <= jamBand[1];
-    const azJam = jam ? azOf(jam.x - px, jam.y - py) : 0;
+    const jlist = jammersHere(W, px, py);
+    let jam = jlist.length ? jlist[0].J : null; desens = jlist.length ? jlist[0].desens : 0;
+    // Adaptive nulling steers the receiver's null(s) at the strongest jammer(s). With 2 channels that is ONE
+    // null, so a second jammer in another band is NOT covered — the honest "two channels, one null" limit.
+    const nulledIdx = new Set();
+    if (canNull && cfg.realism && cfg.jamFx !== false) for (let z = 0; z < Math.min(nNulls, jlist.length); z++) nulledIdx.add(jlist[z].J.idx);
+    // The occupied band (lo .. ~1.6×lo wideband noise) of a jammer, and the jammer (if any) whose band covers
+    // a given target frequency — the co-band blackout / bearing-bias effects key off that specific jammer.
+    const bandOf = J => [J.fMHz * 0.92, J.fMHz * 1.6 * 1.05];
+    const coJamOf = f => { for (const z of jlist) { const b = bandOf(z.J); if (f >= b[0] && f <= b[1]) return z; } return null; };
+    const azOfJam = J => azOf(J.x - px, J.y - py);
     congest = 0;
     if (cfg.realism) { let strong = 0; for (const q of E) if ((q.type === 'jam' || q.type === 'ctrl') && txOn(W, q, t, k)) strong++; congest = CONGEST_DB * clamp(strong / 4, 0, 1); }
     if (inGnss && !gnssIn) { gnssIn = true; const d = dirOf(R.range(0, 360)); dvx = d[0] * NAV_DRIFT_MS; dvy = d[1] * NAV_DRIFT_MS; say(t, 'Entered the GNSS-denial belt. Positions stamped on the recordings now come from dead-reckoning and drift.', 'alert'); }
@@ -1962,15 +2059,37 @@ function flyFlight(W, cfg, ctx, k, plan) {
         const masked = !lineOfSight(W, ep.x, ep.y, ep.z, px, py, altZ);
         let degrade = 0;
         if (cfg.realism) { const p1 = (q.idx * 1.7) % 6.283, p2 = (q.idx * 3.1 + 1) % 6.283; degrade += FADE_DEPTH_DB * 0.25 * (Math.sin(t / 11 + p1) + Math.sin(t / 27 + p2)); if (q.type !== 'jam') degrade -= congest; degrade -= AIRFRAME_MASK_DB * smooth(180 - AIRFRAME_SECTOR_DEG, 180, Math.abs(angDiff(azTrue, hdg))); }
-        const snr0 = SNR_1KM_DB[q.type] - 10 * PATHLOSS_EXP * Math.log10(Math.max(slant, 100) / 1000) + gH + gV - cfg.noise - (q.type === 'jam' ? 0 : desens) + degrade;
+        // Broadband front-end desense: the strongest jammer raises the whole receiver's floor. A PRESELECT
+        // FILTER (analog, before the ADC) is the only thing that stops an OUT-OF-BAND jammer doing this; it
+        // cannot help when the jammer shares the target's band. Nulling (digital) cannot undo it at all.
+        const coJam = (cfg.realism && cfg.jamFx !== false && q.type !== 'jam') ? coJamOf(q.fMHz) : null;
+        let desB = desens;
+        if (jam && !(coJam && coJam.J.idx === jam.idx)) desB *= fe.desensOOB;   // off-band jammer rejected by a preselect
+        let snr0 = SNR_1KM_DB[q.type] - 10 * PATHLOSS_EXP * Math.log10(Math.max(slant, 100) / 1000) + gH + gV - cfg.noise - (q.type === 'jam' ? 0 : desB) + degrade + fe.sens;
+        // Collateral of a steered null: it is a direction, so a wanted signal sitting within the null's width
+        // of a nulled jammer's bearing loses gain too (the 2-element null is broad; the 5-channel null narrow).
+        if (nulledIdx.size && q.type !== 'jam') for (const z of jlist) if (nulledIdx.has(z.J.idx)) { const off = Math.abs(angDiff(azTrue, azOfJam(z.J))); if (off < nullWidthDeg) snr0 -= NULL_NOTCH_DB * (1 - off / nullWidthDeg); }
         const snr = snr0 - (masked ? MASK_LOSS_DB : 0);
+        // Cyclostationary (feature) detection digs below the noise floor for signatures with a cyclic feature
+        // (hop/packet cadence) — so the effective detection threshold drops for matched emitters only.
+        let cycloGain = 0;
+        if (cfg.cyclo && coherentRx) cycloGain = (q.type === 'ctrl' && q.fp && q.fp.hop) ? CYCLO_GAIN_HOP_DB : (q.type === 'c2' || q.type === 'relay') ? CYCLO_GAIN_CONT_DB : 0;
+        const detSnr = DETECT_SNR_DB - cycloGain, marginEff = cfg.margin - cycloGain;
         // (b) Band blackout: a co-band jammer buries signals sharing its band, beyond the general desense.
-        const coBand = cfg.realism && cfg.jamFx !== false && jam && q.type !== 'jam' && inJamBand(q.fMHz);
-        let pd = 1 / (1 + Math.exp(-(snr - DETECT_SNR_DB) / DETECT_SLOPE_DB));
-        if (coBand) { const bo = clamp((desens - JAM_BLACKOUT_DB) / (JAM_DESENS_DB - JAM_BLACKOUT_DB), 0, 1); pd *= (1 - JAM_BLACKOUT_MAX * bo); }
+        // Nulling (if that jammer is the nulled one) and time/frequency excision (if its waveform leaves gaps)
+        // claw this back; a barrage jammer with no nulling leaves it in full.
+        let coScale = 1;
+        if (coJam) {
+          if (nulledIdx.has(coJam.J.idx)) coScale *= nullResidual;                       // spatial null on this jammer
+          const wf = jamWaveform(coJam.J, t, true);
+          if (cfg.excision && wf.recoverable) coScale *= (1 - EXCISION_EFF);              // notch the swept/pulsed gaps
+          else coScale *= Math.max(wf.present, 0.15);                                     // without excision, only its on-time hurts
+        }
+        let pd = 1 / (1 + Math.exp(-(snr - detSnr) / DETECT_SLOPE_DB));
+        if (coJam) { const bo = clamp((coJam.desens - JAM_BLACKOUT_DB) / (JAM_DESENS_DB - JAM_BLACKOUT_DB), 0, 1); pd *= (1 - JAM_BLACKOUT_MAX * bo * coScale); }
         // coverage layer: everywhere we could plausibly have heard this control link
         if (q.type === 'ctrl' && horiz < COVER_R) { const ci = clamp(Math.round(nY / GC), 0, GCY - 1) * GCX + clamp(Math.round(nX / GC), 0, GCX - 1); cover[ci] = Math.max(cover[ci], pd); }
-        if (R() >= pd || snr < cfg.margin) { if (pd >= MISS_MIN_P) { tr.nMiss++; } continue; }
+        if (R() >= pd || snr < marginEff) { if (pd >= MISS_MIN_P) { tr.nMiss++; } continue; }
         F.s3++;
         const fpPass = tr.pstage === 5;
         if (fpPass) { F.s4++; tr.wins.add(k + ':' + Math.floor(t / PIPE.winS)); } else { tr.nRej4++; continue; }
@@ -1987,10 +2106,12 @@ function flyFlight(W, cfg, ctx, k, plan) {
         const m = rssOnlyMode ? { u: 0, az: 0, sR: 0, sB: 0 } : measure(snr, ep.x, ep.y, ep.z, d, dfSig);
         // (c) Bearing bias: a strong co-band jammer drags a weaker signal's measured bearing toward itself,
         // and widens its error — the correlator is partly captured by the louder jammer on the same channel.
-        if (coBand && !rssOnlyMode) {
-          const pull = clamp(0.12 + 0.6 * clamp(desens / Math.max(snr, 1), 0, 1), 0, 0.7);
-          m.az = (m.az + angDiff(azJam, m.az) * pull + 360) % 360;
-          const uJam = coneU(px, py, altZ, d, jam.x, jam.y, jam.z);
+        // Nulling / excision reduce the capture by exactly coScale (the same factor that un-buries the signal).
+        if (coJam && !rssOnlyMode) {
+          const pull = clamp((0.12 + 0.6 * clamp(coJam.desens / Math.max(snr, 1), 0, 1)) * coScale, 0, 0.7);
+          const Jc = coJam.J;
+          m.az = (m.az + angDiff(azOfJam(Jc), m.az) * pull + 360) % 360;
+          const uJam = coneU(px, py, altZ, d, Jc.x, Jc.y, Jc.z);
           m.u = m.u + (uJam - m.u) * pull;
           m.sR = Math.max(m.sR, 0.02) * (1 + 2.2 * pull);
         }
@@ -2021,14 +2142,21 @@ function flyFlight(W, cfg, ctx, k, plan) {
     // phantom detections. Their apparent bearing is a fixed offset from our own boresight (a receiver
     // artifact), so as the aircraft turns they sweep the ground and never converge — the sorter must
     // reject them across flights, and only a rare one slips through as a false fix.
-    if (cfg.realism && cfg.jamFx !== false && jam && desens >= SPUR_DESENS_DB) {
-      const sat = clamp((desens - SPUR_DESENS_DB) / (JAM_DESENS_DB - SPUR_DESENS_DB), 0, 1);
+    // The ONLY thing that moves this threshold is the analog front end: a preselect filter rejects the
+    // off-band jammer before the ADC (headroom up, spur rate down), while a bare LNA overloads sooner
+    // (headroom down, spurs up). Digital nulling/excision are after the ADC and cannot help here — except
+    // pulse-blanking a PULSED jammer, which also blanks the spurs it throws.
+    const spurThresh = SPUR_DESENS_DB + fe.overloadHeadroomDb;            // filter raises it, LNA lowers it
+    if (cfg.realism && cfg.jamFx !== false && jam && desens >= spurThresh && fe.spurMult > 0) {
+      const sat = clamp((desens - spurThresh) / Math.max(JAM_DESENS_DB - spurThresh, 1), 0, 1);
       const key = 'spur:' + jam.idx;
       let st = ctx.tracks.get(key);
       if (!st) { st = { key, idx: -1 - jam.idx, gen: 0, e: { id: jam.id + '·spur', type: 'spur', fMHz: jam.fMHz }, id: jam.id + '·spur', type: 'spur', pstage: 5, post: null, bins: [], open: null, nDet: 0, nMiss: 0, nRej4: 0, maxSnr: -99, wins: new Set(), heard: new Set(), lastK: -1, lastT: -1e9, firstK: k, cc: [], spur: true, offset: (hashStr(jam.id) % 120) - 60 }; ctx.tracks.set(key, st); }
-      const nSpur = 1 + Math.floor(sat * (SPUR_MAX - 1));
+      let spurRate = 0.45 * fe.spurMult;                                  // LNA sprays more, filter far fewer
+      if (cfg.excision && jam.waveform === 'pulsed') spurRate *= (1 - EXCISION_EFF);   // blanking removes pulse-time spurs
+      const nSpur = 1 + Math.floor(sat * (SPUR_MAX - 1) * Math.min(fe.spurMult, 1.5));
       for (let s = 0; s < nSpur; s++) {
-        if (R() > 0.45) continue;                                        // not every intercept
+        if (R() > spurRate) continue;                                    // not every intercept
         const spAz = (hdg + st.offset + R.norm() * 18 + 360) % 360;      // fixed offset from boresight = artifact
         const uu = clamp(Math.cos((spAz - hdg) * D2R) + R.norm() * 0.1, -1, 1);
         F.stored++; F.spur = (F.spur || 0) + 1;
