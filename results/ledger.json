@@ -1,5 +1,5 @@
 {
- "total": 6972,
+ "total": 8052,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -90,6 +90,12 @@
    "campaigns": 1080,
    "when": "2026-10-11T02:21:32.715Z",
    "seconds": 727
+  },
+  {
+   "name": "e15-ladder-modern",
+   "campaigns": 1080,
+   "when": "2026-10-11T02:39:41.645Z",
+   "seconds": 908
   }
  ]
 }
