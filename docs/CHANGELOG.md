@@ -8,6 +8,7 @@ Every version is a git commit (and a local tag) so a bad change can be rolled ba
 | v1.1 | `9a9f99c` | headless batch runner + likelihood speed-up (model unchanged) |
 | v1.2 | `a1ed0c6` | jammer interference model (merged) |
 | v1.3 | `031138a` | RF front end + EW countermeasures |
+| v1.4 | (this commit) | specific emitter identification (SEI) |
 
 The one headline number, from `e05-headline` (24 maps × 3 altitudes = 72 campaigns per variant, paired — every variant flies the same maps), **drone-operator fixes within 500 m**:
 
@@ -23,6 +24,11 @@ Fully equipped vs the bare starting payload: operator fixes within 500 m **more 
 Validated at scale (`e07`, 100 maps × 3 altitudes = 300 campaigns per variant): the fused everything-on payload lifts operators within 500 m from **20 % to 47 %** (paired Δ +27.3 pp, 95 % bootstrap CI [+24.1, +30.7]) and operators located from 56 % to 86 %. On the full 2024-26 threat mix (`e10`, 100 maps), the gain holds against fibre FPV, low-rate links and decoys.
 
 ---
+
+## v1.4 — specific emitter identification (SEI) (2026-10-11)
+
+A hardware fingerprint (oscillator offset, I/Q imbalance, turn-on transient) identifies a transmitter independently of its link settings — both sides field it. New `sei` toggle: when an operator **retunes** between flights its track normally breaks; SEI re-links the new emission to the same hardware, so the heat carries over and tracking survives even when the retune moves the hop rate out of the nominal signature gate. Readable on strong emitters only (`SEI_READ_P` = 0.7).
+- `e12-sei` (240 campaigns, operators retuning): **operators located 85 % → 96 %** (+11 pp), all-HVT located +4.6 pp (95 % CI [+3.3, +5.9]), and fragmented retune tracks consolidate into one. Off by default.
 
 ## v1.3 — front end + EW countermeasures (2026-10-11)
 

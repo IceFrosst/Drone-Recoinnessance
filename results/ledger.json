@@ -1,5 +1,5 @@
 {
- "total": 5412,
+ "total": 5652,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -72,6 +72,12 @@
    "campaigns": 1080,
    "when": "2026-10-11T01:47:06.264Z",
    "seconds": 661
+  },
+  {
+   "name": "e12-sei",
+   "campaigns": 240,
+   "when": "2026-10-11T01:55:24.585Z",
+   "seconds": 163
   }
  ]
 }
