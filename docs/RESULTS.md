@@ -1,6 +1,6 @@
 # Experiment results
 
-Auto-generated from `results/*.md` by `sim/makedocs.js`. Total campaigns run across all experiments: **2,712** (ledger: `results/ledger.json`). Every table is paired — all variants fly the same maps and altitudes. All numbers are modelled, not field data.
+Auto-generated from `results/*.md` by `sim/makedocs.js`. Total campaigns run across all experiments: **5,412** (ledger: `results/ledger.json`). Every table is paired — all variants fly the same maps and altitudes. All numbers are modelled, not field data.
 
 ### E00 · Baseline (v1 model, before any change)
 
@@ -198,6 +198,104 @@ Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
 |---|---|---|---|
 | B | +3.4 [+2.0, +4.8] | +10.1 [+8.9, +11.4] | +7.2 [+4.5, +9.8] |
 | C | +14.8 [+13.1, +16.6] | +12.2 [+11.0, +13.4] | +27.3 [+24.1, +30.7] |
+
+
+---
+
+### E08 · Countermeasure ablation on the modern battlefield
+
+On the 2024-26 threat world (fibre 30%, low-rate 30%, 2 decoys), with a filter→LNA front end fixed, turn on one DSP countermeasure at a time. Isolates what each buys when the hard new threats are present — cyclostationary should dominate because of the low-rate links.
+
+360 campaigns (5 variants × 24 maps × 3 altitudes), 319 s on 4 cores. Paired: every variant flies the same maps.
+
+| Variant | Hit ≤500 m (all HVT) | Located | Median err | Inside 95% | Wrong (>1.5 km) | Operators hit | Operators located | Jammers hit | False/decoy fixes |
+|---|---|---|---|---|---|---|---|---|---|
+| **A** · no DSP | 47% (354/759) | 64% | 279 m | 91% | 10% | 14% (46/327) | 40% | 73% | 288 |
+| **B** · nulling | 49% (372/759) | 64% | 239 m | 91% | 9% | 15% (50/327) | 41% | 73% | 288 |
+| **C** · excision | 47% (355/759) | 64% | 256 m | 91% | 10% | 14% (46/327) | 40% | 73% | 288 |
+| **D** · cyclostationary | 52% (392/759) | 72% | 281 m | 90% | 11% | 24% (77/327) | 59% | 72% | 288 |
+| **E** · all three | 54% (410/759) | 72% | 269 m | 90% | 10% | 24% (80/327) | 59% | 73% | 288 |
+
+Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
+
+| Variant | Δ hit rate, all HVT | Δ located, all HVT | Δ hit rate, operators |
+|---|---|---|---|
+| B | +2.4 [+0.3, +4.7] | +0.4 [-1.1, +2.0] | +1.2 [-1.2, +3.6] |
+| C | +0.1 [-1.2, +1.7] | +0.1 [-0.9, +1.3] | +0.0 [-2.2, +2.2] |
+| D | +5.0 [+2.2, +7.5] | +7.8 [+5.5, +10.0] | +9.5 [+5.2, +13.7] |
+| E | +7.4 [+4.8, +10.1] | +7.8 [+5.8, +10.0] | +10.4 [+6.4, +15.2] |
+
+
+---
+
+### E09 · Jammer waveforms vs time/frequency excision
+
+Three worlds, each with every jammer forced to one waveform, flown with and without excision. Shows excision recovers a swept or pulsed jammer's gaps but does nothing against a barrage.
+
+360 campaigns (6 variants × 20 maps × 3 altitudes), 276 s on 4 cores. Paired: every variant flies the same maps.
+
+| Variant | Hit ≤500 m (all HVT) | Located | Median err | Inside 95% | Wrong (>1.5 km) | Operators hit | Operators located | Jammers hit | False/decoy fixes |
+|---|---|---|---|---|---|---|---|---|---|
+| **A** · barrage · no excision | 54% (272/504) | 74% | 284 m | 90% | 12% | 25% (52/204) | 61% | 80% | 0 |
+| **B** · barrage · excision | 54% (272/504) | 74% | 284 m | 90% | 12% | 25% (52/204) | 61% | 80% | 0 |
+| **C** · swept · no excision | 55% (278/504) | 73% | 267 m | 93% | 11% | 27% (56/204) | 59% | 78% | 0 |
+| **D** · swept · excision | 55% (279/504) | 74% | 258 m | 92% | 12% | 25% (52/204) | 61% | 80% | 0 |
+| **E** · pulsed · no excision | 55% (275/504) | 74% | 279 m | 92% | 11% | 26% (53/204) | 61% | 78% | 0 |
+| **F** · pulsed · excision | 55% (279/504) | 74% | 258 m | 92% | 12% | 25% (52/204) | 61% | 80% | 0 |
+
+Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
+
+| Variant | Δ hit rate, all HVT | Δ located, all HVT | Δ hit rate, operators |
+|---|---|---|---|
+| B | +0.0 [+0.0, +0.0] | +0.0 [+0.0, +0.0] | +0.0 [+0.0, +0.0] |
+| C | +1.2 [-1.0, +3.4] | -0.6 [-2.0, +0.8] | +2.0 [-2.4, +6.4] |
+| D | +1.4 [-0.2, +3.2] | +0.2 [-1.6, +1.8] | +0.0 [-3.4, +3.9] |
+| E | +0.6 [-1.6, +2.8] | +0.2 [-1.0, +1.6] | +0.5 [-3.0, +3.9] |
+| F | +1.4 [-0.2, +3.2] | +0.2 [-1.6, +1.8] | +0.0 [-3.4, +3.9] |
+
+
+---
+
+### E10 · Modern-battlefield headline across 100 maps
+
+The modern-threat headline (fibre 30%, low-rate 30%, 2 decoys) across 100 maps × 3 altitudes. A bare bladeRF, B the equipped single bladeRF, C the fused payload with everything on.
+
+900 campaigns (3 variants × 100 maps × 3 altitudes), 777 s on 4 cores. Paired: every variant flies the same maps.
+
+| Variant | Hit ≤500 m (all HVT) | Located | Median err | Inside 95% | Wrong (>1.5 km) | Operators hit | Operators located | Jammers hit | False/decoy fixes |
+|---|---|---|---|---|---|---|---|---|---|
+| **A** · bare bladeRF | 46% (1435/3144) | 60% | 251 m | 94% | 7% | 9% (127/1344) | 27% | 75% | 1336 |
+| **B** · bladeRF + filter→LNA + DSP | 53% (1676/3144) | 72% | 274 m | 90% | 12% | 22% (294/1344) | 58% | 75% | 1200 |
+| **C** · fused, everything on | 62% (1944/3144) | 75% | 206 m | 91% | 9% | 37% (491/1344) | 63% | 76% | 1200 |
+
+Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
+
+| Variant | Δ hit rate, all HVT | Δ located, all HVT | Δ hit rate, operators |
+|---|---|---|---|
+| B | +7.7 [+6.3, +9.0] | +12.8 [+11.7, +13.9] | +12.4 [+10.2, +14.6] |
+| C | +16.2 [+14.7, +17.5] | +15.5 [+14.4, +16.6] | +27.1 [+24.5, +29.7] |
+
+
+---
+
+### E11 · Robustness to background-spectrum density
+
+Does a denser sector (more clutter the sorter must cut through) degrade the equipped payload? Fused payload, everything on, Frontline RF, across 120 maps × 3 altitudes, at three clutter levels.
+
+1080 campaigns (3 variants × 120 maps × 3 altitudes), 661 s on 4 cores. Paired: every variant flies the same maps.
+
+| Variant | Hit ≤500 m (all HVT) | Located | Median err | Inside 95% | Wrong (>1.5 km) | Operators hit | Operators located | Jammers hit | False/decoy fixes |
+|---|---|---|---|---|---|---|---|---|---|
+| **A** · light clutter (80) | 68% (2029/3000) | 85% | 202 m | 89% | 11% | 47% (568/1200) | 85% | 74% | 0 |
+| **B** · typical clutter (150) | 68% (2046/3000) | 85% | 204 m | 89% | 11% | 48% (576/1200) | 85% | 74% | 0 |
+| **C** · heavy clutter (300) | 68% (2045/3000) | 85% | 209 m | 89% | 11% | 49% (589/1200) | 85% | 73% | 0 |
+
+Paired difference vs **A** (percentage points, 95% bootstrap CI over maps):
+
+| Variant | Δ hit rate, all HVT | Δ located, all HVT | Δ hit rate, operators |
+|---|---|---|---|
+| B | +0.6 [-0.1, +1.4] | +0.0 [-0.2, +0.2] | +0.7 [-0.8, +2.1] |
+| C | +0.5 [-0.4, +1.5] | -0.2 [-0.5, +0.1] | +1.8 [+0.1, +3.4] |
 
 
 ---

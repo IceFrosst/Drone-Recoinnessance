@@ -1,5 +1,5 @@
 {
- "total": 4332,
+ "total": 5412,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -66,6 +66,12 @@
    "campaigns": 900,
    "when": "2026-10-11T01:36:05.357Z",
    "seconds": 777
+  },
+  {
+   "name": "e11-density-robustness",
+   "campaigns": 1080,
+   "when": "2026-10-11T01:47:06.264Z",
+   "seconds": 661
   }
  ]
 }
