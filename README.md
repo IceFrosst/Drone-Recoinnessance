@@ -4,6 +4,8 @@ A browser-based simulator of passive radio reconnaissance from a fixed-wing dron
 
 Open `index.html` in any browser. It is a single self-contained file with no build step, so it also deploys as-is to any static host (Vercel, Netlify, GitHub Pages).
 
+> **Two simulators in this repo.** `index.html` (described below) locates emitters **in the air**, during one mission, with a coherent direction-finding array. `heatmap.html` records on **several predefined flights** and builds the heat map **after landing**, on a cheaper two-channel bladeRF. See [Heat-Map Recon](#heat-map-recon-heatmaphtml) at the end for how the two differ and what the trade costs.
+
 ## What it shows
 
 - **Tab 1, Straight pass survey:** one straight line across the sector. Directional control stations aim at their own drones, so whether we cross a main beam decides who gets a tight fix and who stays vague.
@@ -110,3 +112,118 @@ Where field data would matter most, and what a real system still has to solve:
 - Weather and atmospheric ducting.
 - Downlink bandwidth, aircraft endurance, and survivability under fire.
 - The absence of ground truth in the field — here "error vs truth" is known only because the simulator placed the emitters.
+
+---
+
+
+# Heat-Map Recon (`heatmap.html`)
+
+A second simulator, same modelled battlefield and physics as `index.html`, but a different concept of operations and a different receiver. Open `heatmap.html` in any browser; like the first, it is one self-contained file and deploys to any static host. `heatmap.html#ALPHA1` opens a seed directly.
+
+Where the first simulator locates emitters **in the air, during one mission**, with a coherent direction-finding array, this one **records on several predefined flights and builds the heat map after landing**, on a cheaper bladeRF. It exists to answer one question: if you can only record now and process later, on two channels instead of five, flying fixed routes instead of chasing contacts — how much do you give up, and which choices matter?
+
+## What it shows
+
+- **Tab 1, Campaign:** fly a sequence of predefined routes over one map. Each flight only records; when it lands, the recordings become one probability grid per emitter, and the grids add into the heat map. The next flight is then flown (or, with planning on, chosen from the heat so far). Scrub the timeline through flights, the between-flight processing, and the gaps, or jump straight to the final heat map with **End**. The heat and the located fixes are **coloured by target type** (see below); an on-map HUD tallies how many of each type are located. A **number-of-flights** slider (1–10) adds passes beyond the chosen plan; a **background-spectrum** toggle draws the ~150 other emitters the sorter must cut through; and a **Final result** panel lists each target's probability and its location box once the campaign completes.
+- **Tab 2, Compare:** the same seed, same predefined flights, solved with two receivers side by side — a 5-channel **coherent array** against the **bladeRF** — so the gap is the receiver alone. The live-tasking sim (coherent array plus the 180° arc) sits there as a reference, to show the arc is the bigger advantage. Plus a batch table across 8 maps and every setting, and a per-target-type breakdown.
+
+## Four high-value target types
+
+The same passive method, the same payload and the same 5-stage filter locate **four** kinds of high-value target, each drawn in its own colour on the map and in the results:
+
+- **Drone operators (UAS)** — frequency-hopping control links, aimed antennas, often relocating and retuning. The **hard case**: bursty transmission and the bladeRF's left/right mirror mean fewer, looser fixes and the occasional ghost.
+- **Jammers (EW)** — wideband, very high power, continuous. The **easiest** target in the sim: a jammer screams, so its bearings converge to a tight fix with no surviving mirror.
+- **Command posts (C2)** — continuous net-control comms nodes, sited deep in the rear. Continuous transmission from a fixed point → reliable, tight fixes.
+- **Comms relays (COMMS)** — continuous duplex repeaters, often on high ground. Same story: continuous and fixed, so they locate reliably.
+
+Each type has its **own signature** in the stage-4 library (a hopping-control fingerprint, a wideband-jammer signature, a net-control carrier, a duplex-repeater carrier); the 100+ background emitters match none of them and are dropped. The honesty consequence is visible in the per-type batch table: the continuous emitters are tighter and their 95% ellipses conservative, while operators are looser — which is exactly how passive RF behaves. **GNSS spoofers**, the fifth category often shown on target lists, are deliberately **not** modelled: a spoofer's signal is low-power and satellite-like, and claiming a tight fix on one would overstate what this method can do.
+
+## Film mode (for a clean recording)
+
+A **Film** button (and the `heatmap.html#FILM` hash) opens a full-bleed, chrome-free reveal built for screen-recording the pitch: it opens on the raw, undifferentiated heat map over the background clutter — *most signals are noise* — then one button runs the 5-stage filter as a visible cascade, the clutter collapses, and the four target types bloom in, classified and located — *gold, hidden in plain sight*. `#FILM` curates the GOLF77 seed; the Film button films whatever seed you are on. Space runs the filters, Esc exits.
+
+## The receiver: bladeRF 2.0 micro xA4
+
+The module is a bladeRF 2.0 micro xA4 (70 MHz–6 GHz, 56 MHz instantaneous bandwidth, two receive channels off one AD9361 clock, 12-bit, ~90 g, ~$540 direct). Two channels is the decisive property. With two phase-coherent channels the module measures a **cone angle** to the fuselage axis — accurate off the wingtip (broadside), ambiguous left/right of track, and needing a phase re-check after each retune. On a single channel it can only make a **strength map**. The page lets you switch between three methods on the same recordings:
+
+- **Bearings** — cross the two-channel cone angles across flights. One straight pass leaves a left/right mirror; crossing headings from different flights resolve it.
+- **Strength** — fit range to the 1/rⁿ falloff with the operator's transmit power unknown. This works against omni antennas and **fails against aimed ones**, because the signal peaks where the operator points their patch/yagi, not where they sit.
+- **Combined** — bearings carry the fix, strength trims the ambiguity.
+
+A **Receiver** toggle offers three options, all flying the identical predefined flights so the choice isolates the receiver:
+
+- **bladeRF (2-ch)** — wideband, fast, hears 2.4 GHz, but a cone angle with a left/right mirror.
+- **Coherent array (5-ch, KrakenSDR-class)** — true azimuth, no mirror, tighter bearings and fewer ghosts, but slower sweep and blind above 1.77 GHz (misses the 2.4 GHz operators). Held to the same flights the two come out close: the array is tighter per fix, the bladeRF finds as many or more because it hears the whole band.
+- **Both, fused** — fly the bladeRF and the Kraken together (sensor fusion, a cue-and-cue payload). Each emitter goes to the receiver good at it: the Kraken takes the ≤1.77 GHz control links (clean azimuth, no mirror, tight), the bladeRF takes the 2.4 GHz operators the Kraken can't hear. This **beats either alone** — more located, tighter, fewer ghosts (see the batch table) — and nearly matches a single Kraken flown *with* the 180° arc, without needing in-air tasking. The cost is SWaP: two receivers (~$1.4k, ~490 g) on a small airframe. (Pairing the bladeRF with a HackRF instead adds little: the HackRF has no direction finding and the bladeRF already covers the band.)
+
+The big gap in the batch table is the **live-tasking sim**, and that gap is the 180° arc and in-air tasking, not the receiver — give the same array these predefined flights with no arc and it falls to the array row.
+
+## Record now, map later
+
+The drone flies fixed routes and stores, per burst: frequency, a strength reading, a two-channel cone angle (unless strength-only), and the aircraft's believed position. Nothing is located in the air — no onboard compute, no downlink to detect or jam. After landing, each emitter's recordings are turned into a probability grid over the sector (a log-likelihood from the cone angles and/or the strength falloff, times a prior that a control station sits behind the enemy line), and the peak is the fix. A surviving second lobe is reported as a **ghost** — an unresolved mirror, left visible rather than hidden.
+
+Across flights, teams relocate and some change link settings (so a track breaks and must be rebuilt). **Memory** sets how fast old recordings are forgotten. **Planning** is the honest version of the heat-map-as-context idea: with it on, every route after the first aims at whatever the heat is still unsure about; off, all routes are fixed before the first takeoff.
+
+## How it differs from the live-tasking sim
+
+| | `index.html` (live tasking) | `heatmap.html` (this one) |
+|---|---|---|
+| When it locates | in the air, one mission | after landing, across flights |
+| Receiver | coherent array (KrakenSDR / USRP) | bladeRF, 2 channels (or 1 for strength) |
+| Routing | diverts to high-value targets in real time | predefined; fixed or planned between flights |
+| Memory | one flight, nothing kept | several flights accumulate |
+| Enemy | emitters fixed within a mission | teams relocate and retune between flights |
+
+## Batch results
+
+All numbers are modelled, not field results. Across 8 maps × 3 altitudes, Frontline RF on, teams relocating; "located" means a control station pinned to within ±4 km, and "inside 95%" is measured over all genuine fixes (not only the tight ones), so the located bar does not flatter it:
+
+| Setup | Located | Inside 95% | Median error | Ghosts |
+|---|---|---|---|---|
+| Live-tasking sim · wideband array + 180° arc | 72 fixes | 100% | 244 m | — |
+| Live-tasking sim · KrakenSDR + 180° arc | 48 fixes | 94% | 365 m | — |
+| Heat map · bladeRF + array fused · grid | 41/75 | 73% | 666 m | 16 |
+| Heat map · coherent array · grid (no arc) | 25/75 | 81% | 468 m | 13 |
+| Heat map · bearings · grid | 36/75 | 76% | 790 m | 19 |
+| Heat map · combined · grid | 31/75 | 77% | 948 m | 23 |
+| Heat map · combined · multi-angle | 37/75 | 91% | 653 m | 24 |
+| Heat map · combined · plan between flights | 38/75 | 74% | 586 m | 19 |
+| Heat map · strength only · aimed enemy | 3/75 | 45% | 5354 m | 27 |
+| Heat map · strength only · omni enemy | 22/75 | 79% | 1261 m | 24 |
+| Heat map · combined · single pass | 14/75 | 97% | 369 m | 25 |
+
+These rows count **control links only** (apples-to-apples with the live-tasking sim). The same payload also locates the other three target types — broken out here at the headline config (bladeRF · combined · crossing grid):
+
+| Target type | Located | Inside 95% | Median error | Ghosts |
+|---|---|---|---|---|
+| Drone operators (UAS) | 31/75 | 77% | 948 m | 23 |
+| Jammers (EW) | 15/24 | 100% | 172 m | 0 |
+| Command posts (C2) | 33/48 | 100% | 242 m | 0 |
+| Comms relays (COMMS) | 48/48 | 100% | 357 m | 0 |
+
+The continuous, high-power emitters (jammers, command posts, relays) are far easier than the bursty, aimed, relocating operators: they transmit non-stop from a fixed point, so bearings converge, no left/right mirror survives (zero ghosts), and the 95% ellipse is conservative (100% inside). Operators are the hard case and drive the headline number down. This is the honest shape of passive RF — easy targets are easy, the tactical ones are hard.
+
+## Jamming effects (Frontline RF)
+
+A jammer does more than raise the noise floor, and with Frontline RF on the sim now models three ways it gets in the way — all scaled by how deep inside the jammer's bubble the aircraft is, and all shown on the map (a faint red "jammed" circle marks each bubble):
+
+- **Band blackout.** A signal sharing the jammer's band is *buried*, not merely attenuated, so detections of co-band targets collapse while the aircraft is inside the bubble.
+- **Bearing bias.** A strong co-band jammer drags a weaker signal's measured bearing toward itself and widens its error — the correlator is partly captured by the louder signal on the same channel. This is the main reason operator median error rises (≈590 m → ≈950 m) with the effects on.
+- **Front-end saturation spurs.** Deep in the bubble the receiver overloads and throws *phantom* detections whose bearing is a fixed offset from the aircraft's own boresight — a receiver artifact, not a ground source. As the aircraft turns they sweep the ground and never converge, so the convergence gate rejects them across flights; a rare one slips through as a **false fix** (drawn in red). The Final-result panel reports both counts: spurs rejected and false fixes that got through.
+
+Why the loud continuous targets still locate at ~100% even with these on: a jammer, command post or relay is heard from across the whole map, so losing the bursts recorded *inside* one bubble rarely changes the final fix. The jammer mainly costs you **operator accuracy** (co-band bias) and **false alarms** (spurs), not the easy fixes — which is the honest behaviour. These effects are off when Frontline RF is off (the clean illustration).
+
+Reading the control-link table. Every row runs the **same 5-stage filter**, so the differences are real, not bookkeeping:
+
+- **The live-tasking sim's edge splits two ways, and neither is the whole story.** *Band:* a wideband array (hears 2.4 GHz) locates the most; the same-band KrakenSDR locates fewer because it misses the 2.4 GHz operators. *Arc:* give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops again. Record-then-map on fixed lines is the larger single loss, but the band matters too — my first write-up wrongly pinned it all on the arc (and inflated the old number by counting jammers and radios).
+- **Array vs bladeRF, held to the same flights, is close.** On the crossing grid the array is not tighter and locates no more, because it sweeps ~3× slower (fewer bursts per fix) and is blind above 1.77 GHz. Its no-mirror edge pays off on single/parallel plans, where the bladeRF cannot resolve its mirror. So the receiver choice depends on the flight plan.
+- **Flying both, fused, beats either alone** — more located, tighter, fewer ghosts — because each emitter is handled by the receiver suited to it (Kraken on the low band, bladeRF on 2.4 GHz). It buys back much of what the arc bought, for a SWaP cost rather than live in-air compute. Pairing with a HackRF instead would add little (no direction finding, redundant band).
+- **Strength alone is the warning.** Against aimed antennas it barely locates anything and the few fixes are wrong; give the enemy stock omni antennas and the same method works. That gap is the entire case for the second channel.
+- **Flying more angles beats flying more lines.** Multi-angle and between-flight planning both beat parallel lines and a single pass, because crossing headings resolve the bearing mirror. A minority of fixes stay **confidently wrong** — mostly single-heading plans whose mirror never got resolved — a real failure mode, shown on purpose, as in the live sim.
+
+## Honest limits specific to this page
+
+- The 95% ellipse is calibrated (×2.0 inflation) so the truth lands inside it ~78–96% of the time for operators depending on the plan (96% for multi-angle, lower for grid and between-flight planning) — short of a true 95% on some plans, because the residual is genuine mislocation the fit cannot flag. For the continuous emitter types (jammers, command posts, relays) it sits at ~100%, i.e. conservative. The batch tables' per-setup and per-type inside-95% columns show exactly where it is honest and where it is optimistic.
+- Command posts and comms relays are modelled as continuous fixed emitters with a recognisable signature; real nets are intermittent and can be confused with other comms, so their numbers here are the optimistic end. **GNSS spoofers** are not modelled at all — a low-power, satellite-like signal this method would struggle to pin, so claiming a tight fix on one would overstate the capability.
+- The strength method's range-from-power fit is deliberately naive (one unknown constant). A real system would use terrain and known-power references; this page shows the floor, not the ceiling.
+- Everything the first simulator does not model (validated hop fingerprint, 3D geolocation, fibre-optic FPV drones, real two-element calibration and mutual coupling, weather, endurance and survivability) is unmodelled here too. And as there, error-vs-truth is knowable only because the simulator placed the emitters.
