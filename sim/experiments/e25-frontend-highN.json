@@ -1,0 +1,2 @@
+{ "name": "e25-frontend-highN", "title": "E25 · Front end (high N)", "description": "e02 at 120 maps for tight intervals: bare / LNA / filter / filter→LNA / LNA→filter. Frontline RF, grid.", "nSeeds": 120, "base": { "method": "both", "plan": "grid" },
+  "variants": [ {"label":"A","name":"bare","cfg":{"frontEnd":"none"}}, {"label":"B","name":"LNA","cfg":{"frontEnd":"lna"}}, {"label":"C","name":"filter","cfg":{"frontEnd":"filter"}}, {"label":"D","name":"filter→LNA","cfg":{"frontEnd":"filterlna"}}, {"label":"E","name":"LNA→filter","cfg":{"frontEnd":"lnafilter"}} ] }
