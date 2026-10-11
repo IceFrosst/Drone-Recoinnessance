@@ -1,0 +1,15 @@
+{
+  "name": "e09-jammer-waveforms",
+  "title": "E09 · Jammer waveforms vs time/frequency excision",
+  "description": "Three worlds, each with every jammer forced to one waveform, flown with and without excision. Shows excision recovers a swept or pulsed jammer's gaps but does nothing against a barrage.",
+  "nSeeds": 20,
+  "base": { "method": "both", "plan": "grid", "frontEnd": "filter" },
+  "variants": [
+    { "label": "A", "name": "barrage · no excision", "cfg": {}, "worldOpts": { "jamWave": "barrage" } },
+    { "label": "B", "name": "barrage · excision", "cfg": { "excision": true }, "worldOpts": { "jamWave": "barrage" } },
+    { "label": "C", "name": "swept · no excision", "cfg": {}, "worldOpts": { "jamWave": "swept" } },
+    { "label": "D", "name": "swept · excision", "cfg": { "excision": true }, "worldOpts": { "jamWave": "swept" } },
+    { "label": "E", "name": "pulsed · no excision", "cfg": {}, "worldOpts": { "jamWave": "pulsed" } },
+    { "label": "F", "name": "pulsed · excision", "cfg": { "excision": true }, "worldOpts": { "jamWave": "pulsed" } }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "e08-ablation-modern",
+  "title": "E08 · Countermeasure ablation on the modern battlefield",
+  "description": "On the 2024-26 threat world (fibre 30%, low-rate 30%, 2 decoys), with a filter→LNA front end fixed, turn on one DSP countermeasure at a time. Isolates what each buys when the hard new threats are present — cyclostationary should dominate because of the low-rate links.",
+  "nSeeds": 24,
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 },
+  "base": { "method": "both", "plan": "grid", "frontEnd": "filterlna" },
+  "variants": [
+    { "label": "A", "name": "no DSP", "cfg": {} },
+    { "label": "B", "name": "nulling", "cfg": { "nulling": true } },
+    { "label": "C", "name": "excision", "cfg": { "excision": true } },
+    { "label": "D", "name": "cyclostationary", "cfg": { "cyclo": true } },
+    { "label": "E", "name": "all three", "cfg": { "nulling": true, "excision": true, "cyclo": true } }
+  ]
+}

@@ -959,7 +959,7 @@ function genWorld(seed, nEmit, opts) {
     // time; a swept jammer slides a narrow tone across the band, hitting any one channel only part of the
     // time; a pulsed jammer blinks the whole band on and off. The waveform decides how much time/frequency
     // excision can claw back — a barrage leaves nothing to notch, a swept/pulsed jammer leaves gaps.
-    const wf = R.pick(['barrage', 'barrage', 'swept', 'pulsed']);   // barrage most common, but not alone
+    const wf = opts.jamWave || R.pick(['barrage', 'barrage', 'swept', 'pulsed']);   // barrage most common, but not alone
     const sweepHz = R.range(0.3, 1.2);                               // full-band sweeps per second (swept)
     const sweptCover = R.range(0.18, 0.4);                          // fraction of the band a swept tone covers at once
     const pulseHz = R.range(2, 8), pulseDuty = R.range(0.3, 0.6);    // pulse rate and on-fraction (pulsed)
