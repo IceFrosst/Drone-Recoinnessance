@@ -20,6 +20,8 @@ The one headline number, from `e05-headline` (24 maps × 3 altitudes = 72 campai
 
 Fully equipped vs the bare starting payload: operator fixes within 500 m **more than doubled (22 % → 51 %)**, all-target located **+12 pp**, median error **down a third**, false fixes from front-end overload **eliminated**, and calibration honesty held (truth inside the 95 % ellipse ~90 %).
 
+Validated at scale (`e07`, 100 maps × 3 altitudes = 300 campaigns per variant): the fused everything-on payload lifts operators within 500 m from **20 % to 47 %** (paired Δ +27.3 pp, 95 % bootstrap CI [+24.1, +30.7]) and operators located from 56 % to 86 %. On the full 2024-26 threat mix (`e10`, 100 maps), the gain holds against fibre FPV, low-rate links and decoys.
+
 ---
 
 ## v1.3 — front end + EW countermeasures (2026-10-11)

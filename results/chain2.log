@@ -1,1 +1,3 @@
 [batch] e08-ablation-modern: 5 variants × 24 seeds × 3 altitudes = 360 campaigns on 4 workers
+[batch] 18/360  21s elapsed, ~402s left
+[batch] 36/360  35s elapsed, ~317s left
