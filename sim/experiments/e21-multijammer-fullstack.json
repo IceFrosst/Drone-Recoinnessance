@@ -1,0 +1,13 @@
+{
+  "name": "e21-multijammer-fullstack",
+  "title": "E21 · Multi-jammer robustness with the full stack",
+  "description": "The fused, fully-equipped payload (nulling on, 5-ch → up to 4 nulls) against 1, 2, 3 jammers on the modern threat world, 40 maps × 3 altitudes. Does the fused path hold as jammer count rises (where a 2-channel bladeRF would run out of nulls)?",
+  "nSeeds": 40,
+  "base": { "method": "both", "plan": "multi", "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true, "memory": "fade" },
+  "variants": [
+    { "label": "A", "name": "1 jammer", "cfg": {}, "worldOpts": { "nJam": 1 } },
+    { "label": "B", "name": "2 jammers", "cfg": {}, "worldOpts": { "nJam": 2 } },
+    { "label": "C", "name": "3 jammers", "cfg": {}, "worldOpts": { "nJam": 3 } }
+  ],
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2, "fiberFrac": 0.3, "loraFrac": 0.3, "decoys": 2 }
+}
