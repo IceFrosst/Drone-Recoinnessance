@@ -3,3 +3,4 @@ node_modules/
 
 # transient batch run logs (results tables are committed as .md/.json)
 results/*.log
+.vercel

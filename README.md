@@ -1,5 +1,7 @@
 # RF Recon Simulator
 
+**Live site:** https://drone-reconnaissance.vercel.app
+
 A browser-based simulator of passive radio reconnaissance from a fixed-wing drone. The drone listens for ground emitters (drone control stations, jammers, radios), takes a bearing on each burst it catches, and crosses those bearings to estimate where each emitter is.
 
 Open `index.html` in any browser. It is a single self-contained file with no build step, so it also deploys as-is to any static host (Vercel, Netlify, GitHub Pages).
