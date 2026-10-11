@@ -2,6 +2,34 @@
 
 Auto-generated from `results/*.md` by `sim/makedocs.js`. Total campaigns run across all experiments: **12,762** (ledger: `results/ledger.json`). Every table is paired — all variants fly the same maps and altitudes. All numbers are modelled, not field data.
 
+## Index
+
+- **e00-baseline** — E00 · Baseline (v1 model, before any change)
+- **e01-merged-baseline** — E01 · Baseline with the jammer-interference model (v1.2)
+- **e02-frontend** — E02 · RF front end — does a preselect filter / LNA help, and does an LNA cost us?
+- **e03-countermeasures** — E03 · Software countermeasures — nulling, excision, cyclostationary detection
+- **e04-nulling-limit** — E04 · The two-channel null limit — one jammer vs two
+- **e05-headline** — E05 · Headline — the payload as handed over vs fully equipped
+- **e06-modern-battlefield** — E06 · Modern battlefield — fibre FPV, low-rate links, decoys
+- **e07-validation** — E07 · Headline validation across 100 maps
+- **e08-ablation-modern** — E08 · Countermeasure ablation on the modern battlefield
+- **e09-jammer-waveforms** — E09 · Jammer waveforms vs time/frequency excision
+- **e10-modern-validation** — E10 · Modern-battlefield headline across 100 maps
+- **e11-density-robustness** — E11 · Robustness to background-spectrum density
+- **e12-sei** — E12 · Specific emitter ID (hardware fingerprint) vs retuning
+- **e13-gnss-spoof** — E13 · GNSS spoofing — the confidently-wrong failure
+- **e14-accuracy-ladder** — E14 · The accuracy ladder — each lever's cumulative contribution
+- **e15-ladder-modern** — E15 · The accuracy ladder on the modern threat world
+- **e16-flights-sweep** — E16 · How many flights does the recommended payload need?
+- **e17-memory-fix** — E17 · Does memory-fading fix the stale-data problem?
+- **e18-mobility-sweep** — E18 · Robustness to enemy mobility
+- **e19-plan-recommended** — E19 · Best flight plan for the recommended payload
+- **e20-receiver-fullstack** — E20 · Receiver choice once everything else is optimized
+- **e21-multijammer-fullstack** — E21 · Multi-jammer robustness with the full stack
+- **e22-headline-highN** — E22 · Definitive modern-world headline (high N)
+- **e23-headline-clean-highN** — E23 · Definitive clean-world headline (high N)
+- **e24-ladder-bestops** — E24 · Accuracy ladder under best operational settings
+
 ### E00 · Baseline (v1 model, before any change)
 
 The simulator exactly as it was at the start of this work (commit 3e3a535), measured headless. Every later experiment is compared against these numbers.
