@@ -201,6 +201,36 @@ A jammer does more than raise the noise floor, and with Frontline RF on the sim 
 
 Why the loud continuous targets still locate at ~100% even with these on: a jammer, command post or relay is heard from across the whole map, so losing the bursts recorded *inside* one bubble rarely changes the final fix. The jammer mainly costs you **operator accuracy** (co-band bias) and **false alarms** (spurs), not the easy fixes — which is the honest behaviour. These effects are off when Frontline RF is off (the clean illustration).
 
+Jammers now carry a **waveform** — *barrage* (fills the whole band, all the time), *swept* (a tone sliding across the band) or *pulsed* (the band blinks on and off) — and the blackout and bias are waveform-aware. The waveform is what decides how much the excision countermeasure below can recover: a barrage leaves nothing to notch; a swept or pulsed jammer leaves gaps.
+
+## Front end & countermeasures (how to beat the jammer)
+
+Two separate problems, two separate fixes — and the honest point is that they are **not interchangeable**. A preselect filter is *analog, before the ADC*, so it is the only thing that can stop an out-of-band jammer overloading the receiver. Nulling, excision and cyclostationary detection are *digital, after the ADC*, so they recover co-channel signal and dig below the floor but can do nothing about front-end overload. You need both. (The *Front end & countermeasures* rail section drives all of this; constants are calibrated to measured bladeRF noise figure and ADI's LNA app-note — see `docs/research.md`.)
+
+**RF front end** (≈$30–80 of hardware):
+
+- **Preselect filter** (SAW / band-pass). Throws away out-of-band energy before it reaches the receiver, so a strong jammer in another band can no longer saturate the front end. In batch (`e02-frontend`, 300 campaigns) it takes the spur **false fixes to zero** (13 → 0) at the cost of ~1 dB of sensitivity. This is the single change that directly fixes the false-fix problem.
+- **LNA.** Lowers the noise figure, so weaker and farther emitters cross the detection threshold (+3.6 pp located, more operators). **But** — and this is the thing to check before fitting one — it also lowers the overload headroom, so on its own in a jamming sector it makes saturation *worse*: in the same batch the LNA-only payload threw **more** false fixes (13 → 18), not fewer.
+- **Order matters.** Filter→LNA (the recommended build) gets both the sensitivity and the protection (+4.4 pp located, 0 false fixes). LNA→filter gets the sensitivity but the LNA still sees the full jammer first and saturates — the worst false-fix count of all (22). The sim includes both so the ordering lesson is concrete.
+
+**Three software countermeasures** (free — code only):
+
+- **Adaptive nulling (MVDR).** The two coherent channels that give direction-finding also let you steer a spatial *null* onto the jammer's bearing, clearing the co-channel burying and bearing-bias. Two channels give **one** null, five give four — so a bladeRF handles one jammer and a second jammer in another band still gets through (`e04-nulling-limit`: under three jammers the 2-channel payload holds operators at 18 % hit, the fused 5-channel at 38 %). A null is a *direction*, so it also notches wanted signals near the jammer's bearing, and its depth is limited by channel calibration, not infinite. It does **not** touch front-end spurs.
+- **Time/frequency excision.** Notch the jammed sub-band (swept) or blank the jammed time-slices (pulsed) and keep the rest. Recovers nothing against a barrage.
+- **Cyclostationary (feature) detection.** A control link's packet/hop cadence is a cyclic feature that survives a raised floor, so a matched cyclic detector catches it several dB *below* where an energy detector gives up. In `e03-countermeasures` this is the biggest software win — **operators located 56 % → 73 %** — and it is the only thing that catches the low-rate spread links below.
+
+**The headline** (`e05-headline`, 24 maps × 3 altitudes): the bladeRF as the project started vs the fully-equipped fused payload — **operator fixes within 500 m more than doubled (22 % → 51 %)**, all-target located 68 % → 81 %, median error 300 → 205 m, front-end false fixes 16 → 0, with calibration honesty held (truth inside the 95 % ellipse ~90 %).
+
+## New-technology threats (the 2024–26 picture)
+
+The *Scenario* sliders add what both sides are actually fielding now, so the heat map stops flattering itself (sourced in `docs/research.md`):
+
+- **Fibre-optic FPV drones** — no radio control link at all, so this passive method can **never** locate them. Modelled as a share of operators (Russia 30–50 % of FPV, Ukraine ~15 %) that simply emit nothing: a hard ceiling, not a model failure. With 30 % on fibre, the best any payload reaches is ~70 % of operators — and the sim shows it.
+- **Long-range low-rate spread links** (ELRS SF12 / LoRa, ~−120 dBm) — sit *below* an energy detector's floor. Nearly invisible to the baseline; recovered by cyclostationary detection. This is why that countermeasure matters.
+- **Decoy emitters** — a cheap transmitter radiating a real control-link signature from empty ground. It passes every gate, so the sorter locates it as a false operator: a false fix **no direction-finding can remove**, because the decoy really is transmitting. In `e06-modern-battlefield` the decoy false fixes are identical across every equipped payload — the honest limit.
+
+In that modern mix (`e06`, 288 campaigns) the bare payload locates just **8 %** of operators within 500 m; the fully-equipped fused payload reaches **41 %** — a 5× gain — while the fibre ceiling and the decoys stay exactly as unbeatable as they should.
+
 Reading the control-link table. Every row runs the **same 5-stage filter**, so the differences are real, not bookkeeping:
 
 - **The live-tasking sim's edge splits two ways, and neither is the whole story.** *Band:* a wideband array (hears 2.4 GHz) locates the most; the same-band KrakenSDR locates fewer because it misses the 2.4 GHz operators. *Arc:* give that KrakenSDR the heat map's predefined flights with no 180° arc and it drops again. Record-then-map on fixed lines is the larger single loss, but the band matters too — my first write-up wrongly pinned it all on the arc (and inflated the old number by counting jammers and radios).
@@ -214,4 +244,9 @@ Reading the control-link table. Every row runs the **same 5-stage filter**, so t
 - The 95% ellipse is calibrated (×2.0 inflation) so the truth lands inside it ~78–96% of the time for operators depending on the plan (96% for multi-angle, lower for grid and between-flight planning) — short of a true 95% on some plans, because the residual is genuine mislocation the fit cannot flag. For the continuous emitter types (jammers, command posts, relays) it sits at ~100%, i.e. conservative. The batch tables' per-setup and per-type inside-95% columns show exactly where it is honest and where it is optimistic.
 - Command posts and comms relays are modelled as continuous fixed emitters with a recognisable signature; real nets are intermittent and can be confused with other comms, so their numbers here are the optimistic end. **GNSS spoofers** are not modelled at all — a low-power, satellite-like signal this method would struggle to pin, so claiming a tight fix on one would overstate the capability.
 - The strength method's range-from-power fit is deliberately naive (one unknown constant). A real system would use terrain and known-power references; this page shows the floor, not the ceiling.
-- Everything the first simulator does not model (validated hop fingerprint, 3D geolocation, fibre-optic FPV drones, real two-element calibration and mutual coupling, weather, endurance and survivability) is unmodelled here too. And as there, error-vs-truth is knowable only because the simulator placed the emitters.
+- The front-end and countermeasure numbers are **notional**, calibrated to published figures (measured bladeRF noise figure, ADI's LNA app-note, 2-element null-depth measurements, cyclostationary vs energy-detector papers — all in `docs/research.md`), not to a bench test of *this* payload. They show the right direction and rough magnitude of each effect, not a guaranteed field result. Nulling in particular assumes the two channels can be phase-calibrated on a vibrating airframe, which is the hard part a real build has to prove.
+- **Fibre-optic FPV is now modelled** — but only as a ceiling: those operators emit nothing, so they are simply unlocatable, which is the honest thing to show. What is *still* unmodelled: a validated hop fingerprint, 3D geolocation, real two-element calibration and mutual coupling, weather, and endurance/survivability of the aircraft. And as in the live sim, error-vs-truth is knowable only because the simulator placed the emitters.
+
+## Reproducing the numbers
+
+Every figure in this file comes from the headless runner, not hand-tuning. `sim/engine.js` runs the model half of `heatmap.html` in Node (the page stays one self-contained file); `sim/batch.js` runs paired A/B/C experiments across many maps × altitudes on worker threads. Run one with `node sim/batch.js sim/experiments/<name>.json`; results land in `results/<name>.{json,md}` and the running campaign count in `results/ledger.json`. `docs/CHANGELOG.md` tracks accuracy per version (each a git commit for rollback), `docs/RESULTS.md` collects every experiment table, and `docs/research.md` lists the sourced real-world parameters the constants are calibrated against.
