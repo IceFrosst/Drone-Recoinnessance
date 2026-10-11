@@ -20,6 +20,21 @@ A one-page brief on the passive RF direction-finding payload (bladeRF 2.0 micro,
 
 The one systems insight that ties it together: **the filter (analog, before the ADC) is the only thing that fixes front-end overload; the DSP (after the ADC) is the only thing that fixes co-channel interference. They are complementary, not interchangeable — you need both.**
 
+## The accuracy ladder (each lever's cumulative contribution)
+
+From `e14-accuracy-ladder` (1,080 campaigns, 60 maps × 3 altitudes, Frontline RF on). Each row keeps everything above it. "Operators ≤500 m" is the actionable number; "false fixes" is front-end spurs that fooled the sorter.
+
+| Payload | Operators ≤500 m | Operators located | All-HVT located | Median err | False fixes |
+|---|---|---|---|---|---|
+| bare bladeRF | 20 % | 56 % | 73 % | 284 m | 48 |
+| + preselect filter | 22 % | 57 % | 74 % | 274 m | **0** |
+| + LNA (filter→LNA) | 28 % | 70 % | 79 % | 285 m | 0 |
+| + nulling + excision | 27 % | 69 % | 78 % | 270 m | 0 |
+| + cyclostationary + SEI | 30 % | 92 % | 88 % | 306 m | 0 |
+| **+ fused KrakenSDR** | **49 %** | **96 %** | **90 %** | **208 m** | 0 |
+
+The filter zeroes the false fixes; the LNA buys sensitivity; cyclostationary + SEI lift *located* sharply (they recover weak and retuned operators); the fused Kraken delivers the biggest jump in *actionable* fixes (it hears the whole band mirror-free). Net: operators within 500 m **20 % → 49 %**, located **56 % → 96 %**.
+
 ## The accuracy gain (validated over 100 maps × 3 altitudes)
 
 Bare bladeRF as the project started → fully-equipped fused payload (filter→LNA + nulling + excision + cyclostationary + the KrakenSDR second receiver):
