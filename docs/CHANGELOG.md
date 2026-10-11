@@ -1,0 +1,45 @@
+# Changelog & accuracy over versions
+
+Every version is a git tag so a bad change can be rolled back (`git checkout v1.2 -- heatmap.html`). All numbers are **modelled**, not field results, and come from the headless batch runner (`sim/batch.js`) over many maps × altitudes with Frontline RF on. Each meaningful change ships with an A/B/C experiment in `sim/experiments/` and a results table in `results/`.
+
+The one headline number, from `e05-headline` (24 maps × 3 altitudes = 72 campaigns per variant, paired — every variant flies the same maps), **drone-operator fixes within 500 m**:
+
+| Payload | Operators ≤500 m | Operators located | All-HVT located | Median err | False fixes |
+|---|---|---|---|---|---|
+| **v1.2** bare bladeRF (project start) | 22 % | 55 % | 68 % | 300 m | 16 |
+| + filter→LNA front end | 26 % | 65 % | 73 % | 286 m | **0** |
+| + nulling · excision · cyclostationary | 29 % | 79 % | 78 % | 297 m | 0 |
+| **v1.3** fused payload, everything on | **51 %** | **84 %** | **81 %** | **205 m** | **0** |
+
+Fully equipped vs the bare starting payload: operator fixes within 500 m **more than doubled (22 % → 51 %)**, all-target located **+12 pp**, median error **down a third**, false fixes from front-end overload **eliminated**, and calibration honesty held (truth inside the 95 % ellipse ~90 %).
+
+---
+
+## v1.3 — front end + EW countermeasures (2026-10-11)
+
+New, all **off by default** so the clean illustration is unchanged.
+
+**RF front end** (`frontEnd`: `none` / `lna` / `filter` / `filterlna` / `lnafilter`). Calibrated to measured bladeRF NF (4.9–15.8 dB across the band, no front-end filters) and ADI app-note 1836 (a 15 dB LNA: +3.8 dB sensitivity, −15 dB dynamic range). See `docs/research.md`.
+- A **preselect filter** is before the ADC, so it is the only thing that stops an out-of-band jammer overloading the receiver — it is what kills the saturation spurs (effect *a*) and the broadband desense.
+- An **LNA** lowers noise figure (hears weaker/farther) but lowers overload headroom, so **alone it makes saturation worse**.
+- **Order matters**: filter→LNA protects the LNA; LNA→filter does not.
+- `e02-frontend` (300 campaigns): false fixes **13 (bare) → 18 (LNA) → 0 (filter) → 0 (filter→LNA) → 22 (LNA→filter)**. The filter removes the spur false fixes outright; the LNA adds sensitivity (+3.6 pp located) but more false alarms; filter→LNA gets both (+4.4 pp located, 0 false fixes).
+
+**Adaptive nulling** (MVDR), `nulling`. Two coherent channels steer one null; five steer four. Steered at the strongest jammer; a second jammer in another band is not covered (the honest "two channels, one null" limit). A null is a direction, so it also notches wanted signals near the jammer's bearing; depth is calibration-limited. Digital (post-ADC), so it fixes co-channel burying/bias but **not** overload spurs.
+- `e04-nulling-limit` (240 campaigns): under 3 jammers the 2-ch bladeRF holds operators at 18 % hit / 51 % located (one null); the **fused 5-ch payload lifts them to 38 % hit / 70 % located**.
+
+**Time/frequency excision**, `excision`. Notches a swept jammer's tone or blanks a pulsed jammer's slices; recovers nothing against a barrage. Needs the jammer waveform, so jammers now carry one (barrage / swept / pulsed).
+
+**Cyclostationary detection**, `cyclo`. Lowers the detection threshold for signatures with a cyclic feature (hop/packet cadence), catching them below a raised floor. Matches the research (Pd 0.99 vs 0.18 at −22 dB SNR, ideal AWGN).
+- `e03-countermeasures` (300 campaigns, on top of a filter): cyclostationary is the biggest DSP win — **operators located 56 % → 73 %**. Nulling and excision are smaller, honest gains (they help only targets actually co-band with a jammer).
+
+**Jammer waveforms**: each jammer is barrage / swept / pulsed with duty & sweep params; the co-band blackout and bearing bias are now waveform-aware, and excision has gaps to exploit.
+
+## v1.2 — jammer interference model (merged from a parallel session, 2026-10-10)
+A jammer does more than raise the floor (Frontline RF only): co-band **blackout**, **bearing bias** (operator median ~590→950 m), and front-end **saturation spurs** that the sorter rejects across flights (a rare one slips through as a false fix). `e01-merged-baseline` is the reference point for this version.
+
+## v1.1 — headless batch runner + speed-up (2026-10-10)
+`sim/engine.js` runs the model half of `heatmap.html` in Node; `sim/batch.js` runs paired A/B/C experiments on worker threads. Fused the bearing+strength likelihood grid into one pass over flat arrays (2.5–6× faster, identical results). Model unchanged.
+
+## v1.0 — project as handed over (2026-10-10)
+Four target types, bladeRF 2-ch cone DF, strength / bearings / combined / array / fused receivers, record-then-map across flights, Film mode. `e00-baseline` captures its numbers.

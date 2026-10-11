@@ -1,0 +1,14 @@
+{
+  "name": "e03-countermeasures",
+  "title": "E03 · Software countermeasures — nulling, excision, cyclostationary detection",
+  "description": "bladeRF · combined · crossing grid, Frontline RF on, with a preselect filter so spurs are already handled (isolates what the DSP adds on top of the hardware). Each variant adds one countermeasure, then all three. These are digital, after the ADC, so they recover co-channel signal and dig below the floor — they cannot undo front-end overload (that is the filter's job).",
+  "nSeeds": 20,
+  "base": { "method": "both", "plan": "grid", "frontEnd": "filter" },
+  "variants": [
+    { "label": "A", "name": "filter only (no DSP)", "cfg": {} },
+    { "label": "B", "name": "+ adaptive nulling", "cfg": { "nulling": true } },
+    { "label": "C", "name": "+ time/freq excision", "cfg": { "excision": true } },
+    { "label": "D", "name": "+ cyclostationary detection", "cfg": { "cyclo": true } },
+    { "label": "E", "name": "+ all three", "cfg": { "nulling": true, "excision": true, "cyclo": true } }
+  ]
+}

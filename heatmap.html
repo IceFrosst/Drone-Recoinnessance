@@ -863,9 +863,10 @@ function genWorld(seed, nEmit, opts) {
 
   // --- emitters (enemy side)
   let nC = clamp(Math.round(nEmit * 0.55 + R.range(-0.6, 0.6)), 1, nEmit - 1);
-  let nJ = nEmit >= 7 ? 2 : nEmit >= 3 ? 1 : (R() < 0.5 ? 1 : 0);
-  nJ = Math.min(nJ, nEmit - nC);
-  const nR = nEmit - nC - nJ;
+  let nJ = opts.nJam != null ? opts.nJam : (nEmit >= 7 ? 2 : nEmit >= 3 ? 1 : (R() < 0.5 ? 1 : 0));
+  nJ = clamp(nJ, 0, nEmit - 1);
+  nC = Math.min(nC, nEmit - nJ);
+  const nR = Math.max(0, nEmit - nC - nJ);
   const ems = [];
   const place = (dmin, dmax, nearTown) => {
     for (let tries = 0; tries < 400; tries++) {

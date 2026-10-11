@@ -1,0 +1,14 @@
+{
+  "name": "e04-nulling-limit",
+  "title": "E04 · The two-channel null limit — one jammer vs two",
+  "description": "Adaptive nulling with Frontline RF on. A 2-channel bladeRF can steer ONE null; a 5-channel array can steer four. With a single jammer both cope; with two jammers in different bands the bladeRF can only null one, so the second still buries its co-band targets. The array (and the fused payload) keep nulling both.",
+  "nSeeds": 20,
+  "base": { "method": "both", "plan": "grid", "frontEnd": "filter", "nulling": true },
+  "variants": [
+    { "label": "A", "name": "bladeRF 2-ch · 1 jammer", "cfg": { "rx": "bladerf" }, "worldOpts": { "nJam": 1 } },
+    { "label": "B", "name": "bladeRF 2-ch · 3 jammers", "cfg": { "rx": "bladerf" }, "worldOpts": { "nJam": 3 } },
+    { "label": "C", "name": "array 5-ch · 3 jammers", "cfg": { "rx": "array" }, "worldOpts": { "nJam": 3 } },
+    { "label": "D", "name": "fused 5-ch · 3 jammers", "cfg": { "rx": "fused" }, "worldOpts": { "nJam": 3 } }
+  ],
+  "worldOpts": { "nEmit": 8, "c2": 2, "relay": 2 }
+}

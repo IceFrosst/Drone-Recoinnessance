@@ -1,5 +1,5 @@
 {
- "total": 396,
+ "total": 1524,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -12,6 +12,30 @@
    "campaigns": 216,
    "when": "2026-10-10T23:51:40.849Z",
    "seconds": 152
+  },
+  {
+   "name": "e02-frontend",
+   "campaigns": 300,
+   "when": "2026-10-11T00:12:47.783Z",
+   "seconds": 236
+  },
+  {
+   "name": "e03-countermeasures",
+   "campaigns": 300,
+   "when": "2026-10-11T00:41:00.899Z",
+   "seconds": 221
+  },
+  {
+   "name": "e04-nulling-limit",
+   "campaigns": 240,
+   "when": "2026-10-11T00:44:43.762Z",
+   "seconds": 205
+  },
+  {
+   "name": "e05-headline",
+   "campaigns": 288,
+   "when": "2026-10-11T00:48:56.692Z",
+   "seconds": 214
   }
  ]
 }

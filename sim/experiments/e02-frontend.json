@@ -1,0 +1,14 @@
+{
+  "name": "e02-frontend",
+  "title": "E02 · RF front end — does a preselect filter / LNA help, and does an LNA cost us?",
+  "description": "bladeRF · combined · crossing grid, Frontline RF on (jammers active). Each variant is the same payload with a different analog front end. This isolates the hardware: A bare SDR, B an LNA only, C a preselect filter only, D filter→LNA (the recommended build), E LNA→filter (wrong order).",
+  "nSeeds": 20,
+  "base": { "method": "both", "plan": "grid" },
+  "variants": [
+    { "label": "A", "name": "bare SDR", "cfg": { "frontEnd": "none" } },
+    { "label": "B", "name": "LNA only", "cfg": { "frontEnd": "lna" } },
+    { "label": "C", "name": "preselect filter only", "cfg": { "frontEnd": "filter" } },
+    { "label": "D", "name": "filter → LNA (recommended)", "cfg": { "frontEnd": "filterlna" } },
+    { "label": "E", "name": "LNA → filter (wrong order)", "cfg": { "frontEnd": "lnafilter" } }
+  ]
+}

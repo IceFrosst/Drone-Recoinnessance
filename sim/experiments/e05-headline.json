@@ -1,0 +1,13 @@
+{
+  "name": "e05-headline",
+  "title": "E05 · Headline — the payload as handed over vs fully equipped",
+  "description": "The single accuracy number. Frontline RF on, crossing grid, same 24 maps. A is the bladeRF exactly as the project started (bare SDR, no countermeasures). B adds the recommended analog front end (filter→LNA). C adds the three software countermeasures. D is the fused bladeRF+Kraken payload with everything on — the full recommendation.",
+  "nSeeds": 24,
+  "base": { "method": "both", "plan": "grid" },
+  "variants": [
+    { "label": "A", "name": "bare bladeRF (start of project)", "cfg": { "frontEnd": "none" } },
+    { "label": "B", "name": "+ filter→LNA front end", "cfg": { "frontEnd": "filterlna" } },
+    { "label": "C", "name": "+ nulling + excision + cyclo", "cfg": { "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true } },
+    { "label": "D", "name": "fused payload, everything on", "cfg": { "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true } }
+  ]
+}
