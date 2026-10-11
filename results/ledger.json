@@ -1,5 +1,5 @@
 {
- "total": 5892,
+ "total": 6972,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -84,6 +84,12 @@
    "campaigns": 240,
    "when": "2026-10-11T02:05:35.361Z",
    "seconds": 162
+  },
+  {
+   "name": "e14-accuracy-ladder",
+   "campaigns": 1080,
+   "when": "2026-10-11T02:21:32.715Z",
+   "seconds": 727
   }
  ]
 }

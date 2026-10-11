@@ -1,0 +1,15 @@
+{
+  "name": "e14-accuracy-ladder",
+  "title": "E14 · The accuracy ladder — each lever's cumulative contribution",
+  "description": "One table, the whole story. Starting from the bare bladeRF, add one capability at a time across 60 maps × 3 altitudes, Frontline RF on, crossing grid. Each row keeps everything from the row above.",
+  "nSeeds": 60,
+  "base": { "method": "both", "plan": "grid" },
+  "variants": [
+    { "label": "A", "name": "bare bladeRF", "cfg": { "frontEnd": "none" } },
+    { "label": "B", "name": "+ preselect filter", "cfg": { "frontEnd": "filter" } },
+    { "label": "C", "name": "+ LNA (filter→LNA)", "cfg": { "frontEnd": "filterlna" } },
+    { "label": "D", "name": "+ nulling + excision", "cfg": { "frontEnd": "filterlna", "nulling": true, "excision": true } },
+    { "label": "E", "name": "+ cyclostationary + SEI", "cfg": { "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true } },
+    { "label": "F", "name": "+ fused KrakenSDR", "cfg": { "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true } }
+  ]
+}
