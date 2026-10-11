@@ -1,0 +1,11 @@
+{
+  "name": "e23-headline-clean-highN",
+  "title": "E23 · Definitive clean-world headline (high N)",
+  "description": "The clean-world counterpart to e22 (no fibre/low-rate/decoys): bare bladeRF vs the fully-equipped fused payload, 120 maps × 3 altitudes, Frontline RF on. Completes the definitive before/after in both regimes.",
+  "nSeeds": 120,
+  "base": { "method": "both", "plan": "multi", "memory": "fade" },
+  "variants": [
+    { "label": "A", "name": "bare bladeRF", "cfg": { "rx": "bladerf", "frontEnd": "none", "nulling": false, "excision": false, "cyclo": false, "sei": false } },
+    { "label": "B", "name": "fully-equipped fused", "cfg": { "rx": "fused", "frontEnd": "filterlna", "nulling": true, "excision": true, "cyclo": true, "sei": true } }
+  ]
+}
