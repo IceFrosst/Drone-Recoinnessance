@@ -1,5 +1,5 @@
 {
- "total": 8892,
+ "total": 9372,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -108,6 +108,12 @@
    "campaigns": 360,
    "when": "2026-10-11T02:54:48.689Z",
    "seconds": 391
+  },
+  {
+   "name": "e18-mobility-sweep",
+   "campaigns": 480,
+   "when": "2026-10-11T03:02:01.159Z",
+   "seconds": 345
   }
  ]
 }
