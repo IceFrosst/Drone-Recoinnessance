@@ -1,5 +1,5 @@
 {
- "total": 10212,
+ "total": 10572,
  "experiments": [
   {
    "name": "e00-baseline",
@@ -126,6 +126,12 @@
    "campaigns": 360,
    "when": "2026-10-11T03:16:48.953Z",
    "seconds": 286
+  },
+  {
+   "name": "e21-multijammer-fullstack",
+   "campaigns": 360,
+   "when": "2026-10-11T03:23:04.646Z",
+   "seconds": 325
   }
  ]
 }
