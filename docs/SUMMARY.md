@@ -37,7 +37,14 @@ The filter zeroes the false fixes; the LNA buys sensitivity; cyclostationary + S
 
 ## The definitive number (high-N, modern battlefield)
 
-From `e22-headline-highN` (720 campaigns, 120 maps × 3 altitudes, the full 2024-26 threat mix): bare bladeRF vs the fully-equipped fused payload — **drone-operator fixes within 500 m 10 % → 47 %** (nearly 5×, paired Δ +37.5 pp, 95 % CI [+35.1, +39.7]), operators located **20 % → 70 %**, all-HVT hit +23 pp. A razor-tight interval over 120 maps.
+Bare bladeRF vs the fully-equipped fused payload, 120 maps × 3 altitudes each, high N for tight intervals:
+
+| World | Operators ≤500 m | Operators located | Δ operators ≤500 m (95% CI) |
+|---|---|---|---|
+| Clean (`e23`) | 21 % → **68 %** | 45 % → **96 %** | +46.4 pp [+43.5, +49.5] |
+| Modern threat mix — fibre/low-rate/decoys (`e22`) | 10 % → **47 %** | 20 % → **70 %** | +37.5 pp [+35.1, +39.7] |
+
+The fully-equipped payload roughly triples the operator hit-rate in both regimes; the modern world is lower because ~30 % of operators fly fibre (no RF, unlocatable at any price) — the honest ceiling.
 
 ## The accuracy gain (validated over 100 maps × 3 altitudes)
 
